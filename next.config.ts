@@ -3,11 +3,12 @@ import withPWAInit from "@ducanh2912/next-pwa";
 
 // PWA ki master settings
 const withPWA = withPWAInit({
-  dest: "public", // Service worker public folder mein banega
+  dest: "public",
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: true,
   reloadOnOnline: true,
-  disable: process.env.NODE_ENV === "development", // Dev mode mein band rakha hai taaki errors na aayein
+  // 🔥 DEVELOPMENT MEIN PWA KO COMPLETELY BAND RAKHNE KA LOGIC:
+  disable: process.env.NODE_ENV === "development", 
   workboxOptions: {
     disableDevLogs: true,
   },
@@ -15,7 +16,7 @@ const withPWA = withPWAInit({
 
 // Aapki normal Next.js config
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Aap yahan apni baaki settings daal sakte hain
 };
 
 // Next config ko PWA wrapper ke sath export kar rahe hain
