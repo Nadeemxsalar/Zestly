@@ -1,5 +1,6 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { supabase } from "@/lib/supabase"; // 🔥 SUPABASE CONNECTED
 
 interface PantryItem {
   id: string;
@@ -23,11 +24,8 @@ const analyzeItem = (name: string) => {
 };
 
 export default function PantryTab() {
-  const [items, setItems] = useState<PantryItem[]>([
-    { id: "1", name: "Almond Milk", qty: 2, unit: "Liters", category: "Dairy", expiryDate: new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0], pricePerUnit: 250 },
-    { id: "2", name: "Brown Bread", qty: 0.5, unit: "Pack", category: "Grains", expiryDate: new Date(Date.now() + 4 * 86400000).toISOString().split('T')[0], pricePerUnit: 50 },
-    { id: "3", name: "Chicken Breast", qty: 500, unit: "g", category: "Meat", expiryDate: new Date(Date.now() + 1 * 86400000).toISOString().split('T')[0], pricePerUnit: 0.4 },
-  ]);
+  const [items, setItems] = useState<PantryItem[]>([]);
+  const [isLoadingDB, setIsLoadingDB] = useState(true);
 
   const [newItemName, setNewItemName] = useState("");
   const [newItemUnit, setNewItemUnit] = useState("Kg");
@@ -36,27 +34,83 @@ export default function PantryTab() {
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [filter, setFilter] = useState<"all" | "urgent" | "low">("all");
 
-  const handleAddItem = (e: React.FormEvent) => {
+  // 🚀 1. FETCH FROM SUPABASE
+  useEffect(() => {
+    fetchPantryItems();
+  }, []);
+
+  const fetchPantryItems = async () => {
+    const { data, error } = await supabase
+      .from("pantry")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      const formattedItems: PantryItem[] = data.map(dbItem => ({
+        id: dbItem.id,
+        name: dbItem.name,
+        qty: dbItem.qty || 1,
+        unit: dbItem.unit || "Kg",
+        category: dbItem.category || "Staples",
+        expiryDate: dbItem.expiry_date || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+        pricePerUnit: dbItem.price_per_unit || 100
+      }));
+      setItems(formattedItems);
+    }
+    setIsLoadingDB(false);
+  };
+
+  // 🚀 2. ADD TO SUPABASE
+  const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemName) return;
+    
     const { cat } = analyzeItem(newItemName);
-    setItems([{
-      id: Date.now().toString(),
+    const newExpiryDate = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+    
+    const newItemData = {
       name: newItemName,
       qty: 1,
       unit: newItemUnit,
       category: cat,
-      expiryDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
-      pricePerUnit: 100, // Mock price
-    }, ...items]);
+      expiry_date: newExpiryDate,
+      price_per_unit: 100 // Mock price
+    };
+
+    const { data, error } = await supabase.from("pantry").insert([newItemData]).select();
+
+    if (!error && data) {
+      const dbItem = data[0];
+      setItems([{
+        id: dbItem.id,
+        name: dbItem.name,
+        qty: dbItem.qty,
+        unit: dbItem.unit,
+        category: dbItem.category,
+        expiryDate: dbItem.expiry_date,
+        pricePerUnit: dbItem.price_per_unit
+      }, ...items]);
+    }
     setNewItemName("");
   };
 
-  const handleUpdateQty = (id: string, delta: number) => {
-    setItems(items.map(item => item.id === id ? { ...item, qty: Math.max(0, parseFloat((item.qty + delta).toFixed(2))) } : item).filter(i => i.qty > 0));
-  };
+  // 🚀 3. UPDATE OR DELETE IN SUPABASE
+  const handleUpdateQty = async (id: string, delta: number) => {
+    const itemToUpdate = items.find(i => i.id === id);
+    if (!itemToUpdate) return;
 
-  const handleRemove = (id: string) => setItems(items.filter(i => i.id !== id));
+    const newQty = Math.max(0, parseFloat((itemToUpdate.qty + delta).toFixed(2)));
+
+    // Agar Quantity 0 ho gayi, toh Database se delete kardo
+    if (newQty <= 0) {
+      setItems(items.filter(i => i.id !== id)); // Fast UI Update
+      await supabase.from("pantry").delete().eq("id", id); // Background DB Delete
+    } else {
+      // Quantity update karo
+      setItems(items.map(i => i.id === id ? { ...i, qty: newQty } : i));
+      await supabase.from("pantry").update({ qty: newQty }).eq("id", id);
+    }
+  };
 
   const getDaysLeft = (dateStr: string) => Math.ceil((new Date(dateStr).getTime() - new Date().getTime()) / (86400000));
 
@@ -88,7 +142,7 @@ export default function PantryTab() {
           {/* 1. Net Worth Tracker */}
           <p className="text-orange-400 font-bold text-sm flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
-            Total Worth: ₹{stats.totalValue.toLocaleString()}
+            {isLoadingDB ? "Syncing Cloud..." : `Total Worth: ₹${stats.totalValue.toLocaleString()}`}
           </p>
         </div>
         
@@ -145,7 +199,7 @@ export default function PantryTab() {
           <select value={newItemUnit} onChange={(e) => setNewItemUnit(e.target.value)} className="bg-white/5 text-orange-400 font-bold rounded-xl px-2 py-2.5 outline-none appearance-none text-center min-w-[50px] mr-1">
             <option className="bg-black text-white">Kg</option><option className="bg-black text-white">g</option><option className="bg-black text-white">L</option><option className="bg-black text-white">Pcs</option>
           </select>
-          <button type="submit" className="bg-gradient-to-br from-orange-400 to-red-500 text-white font-black p-4 rounded-[1.5rem] shadow-lg hover:scale-105 active:scale-95 transition-all">
+          <button type="submit" disabled={!newItemName} className="bg-gradient-to-br from-orange-400 to-red-500 text-white font-black p-4 rounded-[1.5rem] shadow-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"/></svg>
           </button>
         </form>
@@ -163,64 +217,70 @@ export default function PantryTab() {
       </div>
 
       {/* --- INVENTORY RENDERER --- */}
-      <div className={viewMode === "grid" ? "grid grid-cols-2 gap-3" : "space-y-3"}>
-        {filteredItems.map((item) => {
-          const daysLeft = getDaysLeft(item.expiryDate);
-          const isUrgent = daysLeft <= 2;
-          const isLow = (item.unit === 'Kg' || item.unit === 'Liters') ? item.qty < 1 : item.qty < 2;
-          const { emoji } = analyzeItem(item.name);
+      {isLoadingDB ? (
+        <div className="flex justify-center py-10">
+          <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      ) : (
+        <div className={viewMode === "grid" ? "grid grid-cols-2 gap-3" : "space-y-3"}>
+          {filteredItems.map((item) => {
+            const daysLeft = getDaysLeft(item.expiryDate);
+            const isUrgent = daysLeft <= 2;
+            const isLow = (item.unit === 'Kg' || item.unit === 'Liters') ? item.qty < 1 : item.qty < 2;
+            const { emoji } = analyzeItem(item.name);
 
-          return (
-            <div key={item.id} className={`group relative bg-white/[0.02] hover:bg-white/[0.04] border ${isUrgent ? 'border-red-500/30' : 'border-white/10'} rounded-3xl p-4 backdrop-blur-sm transition-all duration-300 hover:shadow-2xl ${viewMode === "grid" ? "flex flex-col" : "flex items-center justify-between gap-4"}`}>
-              
-              {/* 8. Low Stock Badge */}
-              {isLow && <span className="absolute -top-2 -right-2 bg-yellow-500 text-black text-[9px] font-black uppercase px-2 py-1 rounded-full shadow-lg border border-yellow-300 z-10">Low</span>}
-
-              {/* Icon & Name */}
-              <div className={`flex ${viewMode === "grid" ? "flex-col mb-4" : "items-center flex-1 gap-4"}`}>
-                <div className="w-14 h-14 bg-gradient-to-br from-white/10 to-transparent rounded-2xl flex items-center justify-center text-3xl shadow-inner ring-1 ring-white/5">
-                  {emoji}
-                </div>
-                <div>
-                  <h4 className={`text-white font-black tracking-tight ${viewMode === "grid" ? "text-lg mt-3" : "text-base"}`}>{item.name}</h4>
-                  <p className="text-slate-400 text-xs font-medium">{item.category}</p>
-                </div>
-              </div>
-
-              {/* Controls & Expiry */}
-              <div className={`flex ${viewMode === "grid" ? "flex-col gap-4" : "items-center gap-4"}`}>
+            return (
+              <div key={item.id} className={`group relative bg-white/[0.02] hover:bg-white/[0.04] border ${isUrgent ? 'border-red-500/30' : 'border-white/10'} rounded-3xl p-4 backdrop-blur-sm transition-all duration-300 hover:shadow-2xl ${viewMode === "grid" ? "flex flex-col" : "flex items-center justify-between gap-4"}`}>
                 
-                {/* Expiry Pill */}
-                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold ${daysLeft < 0 ? 'bg-slate-800 text-slate-500' : isUrgent ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500/50' : 'bg-green-500/10 text-green-400'}`}>
-                   {daysLeft < 0 ? 'Expired' : daysLeft === 0 ? 'Last Day!' : `${daysLeft}d left`}
+                {/* 8. Low Stock Badge */}
+                {isLow && <span className="absolute -top-2 -right-2 bg-yellow-500 text-black text-[9px] font-black uppercase px-2 py-1 rounded-full shadow-lg border border-yellow-300 z-10">Low</span>}
+
+                {/* Icon & Name */}
+                <div className={`flex ${viewMode === "grid" ? "flex-col mb-4" : "items-center flex-1 gap-4"}`}>
+                  <div className="w-14 h-14 bg-gradient-to-br from-white/10 to-transparent rounded-2xl flex items-center justify-center text-3xl shadow-inner ring-1 ring-white/5">
+                    {emoji}
+                  </div>
+                  <div>
+                    <h4 className={`text-white font-black tracking-tight ${viewMode === "grid" ? "text-lg mt-3" : "text-base"}`}>{item.name}</h4>
+                    <p className="text-slate-400 text-xs font-medium">{item.category}</p>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {/* +/- Controls */}
-                  <div className="flex items-center bg-black/50 p-1 rounded-xl ring-1 ring-white/5">
-                    <button onClick={() => handleUpdateQty(item.id, -0.5)} className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-all">-</button>
-                    <span className="w-10 text-center font-black text-sm">{item.qty}<span className="text-[9px] text-slate-500 ml-0.5">{item.unit}</span></span>
-                    <button onClick={() => handleUpdateQty(item.id, 0.5)} className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-all">+</button>
+                {/* Controls & Expiry */}
+                <div className={`flex ${viewMode === "grid" ? "flex-col gap-4" : "items-center gap-4"}`}>
+                  
+                  {/* Expiry Pill */}
+                  <div className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold ${daysLeft < 0 ? 'bg-slate-800 text-slate-500' : isUrgent ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500/50' : 'bg-green-500/10 text-green-400'}`}>
+                     {daysLeft < 0 ? 'Expired' : daysLeft === 0 ? 'Last Day!' : `${daysLeft}d left`}
                   </div>
 
-                  {/* 7. Quick Cart Button */}
-                  <button className="w-9 h-9 flex items-center justify-center bg-orange-500/10 text-orange-400 hover:bg-orange-500 hover:text-white rounded-xl transition-all" title="Add to Cart">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                  </button>
+                  <div className="flex items-center justify-between gap-2">
+                    {/* +/- Controls */}
+                    <div className="flex items-center bg-black/50 p-1 rounded-xl ring-1 ring-white/5 flex-1 justify-center">
+                      <button onClick={() => handleUpdateQty(item.id, -0.5)} className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-all">-</button>
+                      <span className="w-12 text-center font-black text-sm">{item.qty}<span className="text-[9px] text-slate-500 ml-0.5">{item.unit}</span></span>
+                      <button onClick={() => handleUpdateQty(item.id, 0.5)} className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-all">+</button>
+                    </div>
+
+                    {/* 7. Quick Cart Button */}
+                    <button className="w-9 h-9 shrink-0 flex items-center justify-center bg-orange-500/10 text-orange-400 hover:bg-orange-500 hover:text-white rounded-xl transition-all" title="Add to Cart">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                    </button>
+                  </div>
+
                 </div>
-
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
 
-        {filteredItems.length === 0 && (
-          <div className="col-span-2 text-center py-12 px-6 border border-dashed border-white/10 rounded-[2rem] bg-white/[0.01]">
-            <div className="text-4xl mb-3 opacity-50">🛸</div>
-            <p className="text-slate-400 font-medium text-sm">No items found for this filter.</p>
-          </div>
-        )}
-      </div>
+          {filteredItems.length === 0 && (
+            <div className="col-span-2 text-center py-12 px-6 border border-dashed border-white/10 rounded-[2rem] bg-white/[0.01]">
+              <div className="text-4xl mb-3 opacity-50">🛸</div>
+              <p className="text-slate-400 font-medium text-sm">Pantry is empty. Time to restock!</p>
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );

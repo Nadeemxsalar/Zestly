@@ -1,5 +1,6 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { supabase } from "@/lib/supabase"; // 🔥 SUPABASE CONNECTED
 
 interface Recipe {
   id: string;
@@ -19,39 +20,8 @@ interface Recipe {
 }
 
 export default function RecipesTab() {
-  // 🔥 5 PREMIUM DEFAULT RECIPES
-  const [recipes, setRecipes] = useState<Recipe[]>([
-    { 
-      id: "1", name: "Butter Chicken Ultra", time: "45 Min", calories: 650, type: "Non-Veg", category: "High Protein", emoji: "🍗", gradient: "from-orange-500 to-red-600", isLiked: true, 
-      ingredients: ["500g Boneless Chicken", "2 tbsp Premium Butter", "1 Cup Tomato Puree", "50ml Heavy Cream"], 
-      steps: ["Marinate chicken in yogurt and spices.", "Melt butter and sear chicken.", "Add puree and simmer.", "Drizzle cream and serve hot!"],
-      macros: { protein: 45, carbs: 12, fats: 32 }, difficulty: "Medium"
-    },
-    { 
-      id: "2", name: "Avocado Quinoa Bowl", time: "15 Min", calories: 320, type: "Veg", category: "Quick Meal", emoji: "🥑", gradient: "from-green-400 to-emerald-600", isLiked: false, 
-      ingredients: ["1 Cup Cooked Quinoa", "1 Ripe Avocado", "Cherry Tomatoes", "Olive Oil Dressing"], 
-      steps: ["Fluff the cooked quinoa in a bowl.", "Slice the avocado and arrange on top.", "Halve the cherry tomatoes and add.", "Drizzle with olive oil, salt, and pepper."],
-      macros: { protein: 12, carbs: 35, fats: 18 }, difficulty: "Easy"
-    },
-    { 
-      id: "3", name: "Smoky Paneer Tikka", time: "30 Min", calories: 410, type: "Veg", category: "High Protein", emoji: "🍢", gradient: "from-yellow-400 to-orange-500", isLiked: true, 
-      ingredients: ["250g Paneer Cubes", "1 Cup Hung Curd", "Tikka Masala", "Bell Peppers & Onions"], 
-      steps: ["Mix hung curd with tikka masala.", "Coat paneer and veggies in the marinade.", "Skewer them alternately.", "Grill for 15 mins until charred."],
-      macros: { protein: 22, carbs: 15, fats: 28 }, difficulty: "Medium"
-    },
-    { 
-      id: "4", name: "Hyderabadi Dum Biryani", time: "90 Min", calories: 850, type: "Non-Veg", category: "Heavy Meal", emoji: "🥘", gradient: "from-amber-600 to-orange-700", isLiked: false, 
-      ingredients: ["1kg Basmati Rice", "750g Mutton/Chicken", "Fried Onions (Birista)", "Saffron Milk", "Whole Spices"], 
-      steps: ["Marinate meat overnight with spices and yogurt.", "Partially boil rice with whole spices.", "Layer meat, rice, fried onions, and saffron.", "Seal pot and cook on Dum (slow heat) for 45 mins."],
-      macros: { protein: 48, carbs: 85, fats: 35 }, difficulty: "Hard"
-    },
-    { 
-      id: "5", name: "Berry Protein Smoothie", time: "5 Min", calories: 250, type: "Veg", category: "Quick Meal", emoji: "🍓", gradient: "from-pink-500 to-rose-500", isLiked: false, 
-      ingredients: ["1 Scoop Whey Protein", "Mixed Berries", "1 Cup Almond Milk", "Chia Seeds"], 
-      steps: ["Add almond milk to the blender.", "Drop in the berries and protein powder.", "Blend until smooth.", "Top with chia seeds and enjoy cold."],
-      macros: { protein: 25, carbs: 20, fats: 5 }, difficulty: "Easy"
-    }
-  ]);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [isLoadingDB, setIsLoadingDB] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<"All" | "Veg" | "Non-Veg" | "Quick Meal" | "High Protein">("All");
@@ -80,7 +50,50 @@ export default function RecipesTab() {
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const toggleLike = (id: string) => setRecipes(recipes.map(r => r.id === id ? { ...r, isLiked: !r.isLiked } : r));
+  // 🚀 1. FETCH RECIPES FROM SUPABASE
+  useEffect(() => {
+    fetchRecipes();
+  }, []);
+
+  const fetchRecipes = async () => {
+    const { data, error } = await supabase
+      .from("recipes")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      const formattedRecipes: Recipe[] = data.map(dbRecipe => ({
+        id: dbRecipe.id,
+        name: dbRecipe.name,
+        time: dbRecipe.time || "30 Min",
+        calories: dbRecipe.calories || 400,
+        type: dbRecipe.type as any || "Veg",
+        category: dbRecipe.category || "Quick Meal",
+        emoji: dbRecipe.emoji || (dbRecipe.type === "Veg" ? "🥗" : "🥩"),
+        gradient: dbRecipe.gradient || "from-orange-500 to-red-600",
+        isLiked: dbRecipe.is_liked || false,
+        ingredients: dbRecipe.ingredients || [],
+        steps: dbRecipe.steps || [],
+        imageUrl: dbRecipe.image_url || undefined,
+        macros: dbRecipe.macros || { protein: 10, carbs: 20, fats: 10 },
+        difficulty: dbRecipe.difficulty as any || "Medium"
+      }));
+      setRecipes(formattedRecipes);
+    }
+    setIsLoadingDB(false);
+  };
+
+  // 🚀 2. UPDATE LIKE STATUS IN SUPABASE
+  const toggleLike = async (id: string) => {
+    const recipe = recipes.find(r => r.id === id);
+    if (!recipe) return;
+    
+    // UI jaldi update karne ke liye
+    setRecipes(recipes.map(r => r.id === id ? { ...r, isLiked: !r.isLiked } : r));
+    
+    // DB background mein update
+    await supabase.from("recipes").update({ is_liked: !recipe.isLiked }).eq("id", id);
+  };
 
   // 🚀 ADVANCED: Image Compression Logic
   const processImageFile = (file: File) => {
@@ -113,7 +126,6 @@ export default function RecipesTab() {
     if (e.target.files?.[0]) processImageFile(e.target.files[0]);
   };
 
-  // Drag and Drop Handlers
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
   const handleDrop = (e: React.DragEvent) => {
@@ -122,15 +134,35 @@ export default function RecipesTab() {
     if (e.dataTransfer.files?.[0]) processImageFile(e.dataTransfer.files[0]);
   };
 
+  // 🚀 3. SAVE TO SUPABASE DB & STORAGE
   const handleAddRecipe = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName) return;
     
     setIsSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate DB Upload UX
-    
-    const newRecipe: Recipe = {
-      id: Date.now().toString(), 
+    let finalImageUrl = undefined;
+
+    // Image Upload to Storage Bucket
+    if (imageFile) {
+      try {
+        const fetchRes = await fetch(imageFile);
+        const blob = await fetchRes.blob();
+        const fileName = `recipe-${Date.now()}.jpg`;
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from("recipe-images")
+          .upload(fileName, blob, { contentType: "image/jpeg" });
+
+        if (!uploadError) {
+          const { data: publicUrlData } = supabase.storage.from("recipe-images").getPublicUrl(fileName);
+          finalImageUrl = publicUrlData.publicUrl;
+        }
+      } catch (err) {
+        console.error("Image processing error", err);
+      }
+    }
+
+    const newRecipeData = {
       name: newName, 
       time: newTime ? `${newTime} Min` : "30 Min", 
       calories: newCalories ? parseInt(newCalories) : 400, 
@@ -138,10 +170,10 @@ export default function RecipesTab() {
       category: newProtein && parseInt(newProtein) > 20 ? "High Protein" : "Quick Meal", 
       emoji: newType === "Veg" ? "🥗" : "🥩", 
       gradient: "from-blue-500 to-indigo-600", 
-      isLiked: false,
+      is_liked: false,
       ingredients: newIngredients ? newIngredients.split('\n').filter(i => i.trim() !== "") : ["Secret Ingredient"], 
       steps: newSteps ? newSteps.split('\n').filter(s => s.trim() !== "") : ["Mix and cook."],
-      imageUrl: imageFile || undefined, 
+      image_url: finalImageUrl, 
       macros: { 
         protein: newProtein ? parseInt(newProtein) : 10, 
         carbs: newCarbs ? parseInt(newCarbs) : 20, 
@@ -149,9 +181,30 @@ export default function RecipesTab() {
       }, 
       difficulty: newDifficulty
     };
+
+    const { data, error } = await supabase.from("recipes").insert([newRecipeData]).select();
     
-    setRecipes([newRecipe, ...recipes]);
-    
+    if (!error && data) {
+      const dbRecipe = data[0];
+      const addedRecipe: Recipe = {
+        id: dbRecipe.id,
+        name: dbRecipe.name,
+        time: dbRecipe.time,
+        calories: dbRecipe.calories,
+        type: dbRecipe.type,
+        category: dbRecipe.category,
+        emoji: dbRecipe.emoji,
+        gradient: dbRecipe.gradient,
+        isLiked: dbRecipe.is_liked,
+        ingredients: dbRecipe.ingredients,
+        steps: dbRecipe.steps,
+        imageUrl: dbRecipe.image_url,
+        macros: dbRecipe.macros,
+        difficulty: dbRecipe.difficulty
+      };
+      setRecipes([addedRecipe, ...recipes]);
+    }
+
     // Reset Form
     setIsAddModalOpen(false); 
     setNewName(""); setNewTime(""); setNewCalories(""); setNewProtein(""); setNewCarbs(""); setNewFats("");
@@ -173,7 +226,7 @@ export default function RecipesTab() {
         <div>
           <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-500 tracking-tight mb-1">Cookbook</h2>
           <p className="text-orange-400 font-bold text-sm flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span> {recipes.length} Recipes
+            <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span> {isLoadingDB ? "Loading..." : `${recipes.length} Recipes`}
           </p>
         </div>
         <button onClick={() => setIsAddModalOpen(true)} className="cursor-pointer bg-gradient-to-br from-orange-400 to-red-500 hover:from-orange-500 hover:to-red-600 text-white p-3 rounded-2xl shadow-[0_0_20px_rgba(249,115,22,0.4)] transition-all active:scale-95">
@@ -201,52 +254,65 @@ export default function RecipesTab() {
       </div>
 
       {/* --- RECIPE GRID --- */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10 mt-6">
-        {filteredRecipes.map((recipe) => (
-          <div key={recipe.id} className="group bg-white/[0.02] hover:bg-white/[0.04] border border-white/10 p-2.5 rounded-[2rem] backdrop-blur-sm transition-all duration-300 hover:shadow-2xl flex flex-col">
-            
-            <div className={`w-full h-36 rounded-[1.5rem] relative overflow-hidden flex items-center justify-center shadow-inner ${!recipe.imageUrl ? `bg-gradient-to-br ${recipe.gradient}` : 'bg-black/50'}`}>
-              {recipe.imageUrl ? (
-                <img src={recipe.imageUrl} alt={recipe.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-              ) : (
-                <span className="text-6xl drop-shadow-2xl group-hover:scale-110 transition-transform duration-500">{recipe.emoji}</span>
-              )}
-              
-              {/* Macro Tags Overlay */}
-              <div className="absolute bottom-2 left-2 flex gap-1 z-20">
-                <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold px-2 py-1 rounded-lg flex items-center gap-1"><span className="text-blue-400">P</span> {recipe.macros.protein}g</span>
-                <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold px-2 py-1 rounded-lg flex items-center gap-1"><span className="text-yellow-400">C</span> {recipe.macros.carbs}g</span>
-              </div>
-
-              <button onClick={() => toggleLike(recipe.id)} className="cursor-pointer absolute top-3 right-3 bg-black/30 backdrop-blur-md p-2 rounded-xl text-white hover:bg-black/50 transition-colors z-20">
-                <svg className={`w-5 h-5 ${recipe.isLiked ? 'fill-red-500 text-red-500' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
-              </button>
+      {isLoadingDB ? (
+        <div className="flex flex-col items-center justify-center py-20 text-orange-500 gap-4">
+          <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="font-bold">Loading your Cloud Recipes...</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10 mt-6">
+          {filteredRecipes.length === 0 ? (
+            <div className="col-span-full text-center py-10 text-slate-500 font-bold bg-white/5 rounded-[2rem] border border-white/10">
+              No recipes found. Add your first premium recipe! 👨‍🍳
             </div>
-
-            <div className="p-3 pt-4 flex-1 flex flex-col justify-between">
-              <div>
-                <div className="flex justify-between items-start gap-2 mb-1">
-                  <h3 className="text-white font-black text-lg leading-tight tracking-tight">{recipe.name}</h3>
-                  <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-md border ${recipe.type === 'Veg' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>{recipe.type}</span>
-                </div>
-                <div className="flex items-center justify-between mt-3">
-                  <div className="flex items-center gap-3 text-xs font-bold text-slate-400">
-                    <span className="flex items-center gap-1">⏱️ {recipe.time}</span>
-                    <span className="flex items-center gap-1 text-orange-400">🔥 {recipe.calories} cal</span>
+          ) : (
+            filteredRecipes.map((recipe) => (
+              <div key={recipe.id} className="group bg-white/[0.02] hover:bg-white/[0.04] border border-white/10 p-2.5 rounded-[2rem] backdrop-blur-sm transition-all duration-300 hover:shadow-2xl flex flex-col">
+                
+                <div className={`w-full h-36 rounded-[1.5rem] relative overflow-hidden flex items-center justify-center shadow-inner ${!recipe.imageUrl ? `bg-gradient-to-br ${recipe.gradient}` : 'bg-black/50'}`}>
+                  {recipe.imageUrl ? (
+                    <img src={recipe.imageUrl} alt={recipe.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                  ) : (
+                    <span className="text-6xl drop-shadow-2xl group-hover:scale-110 transition-transform duration-500">{recipe.emoji}</span>
+                  )}
+                  
+                  {/* Macro Tags Overlay */}
+                  <div className="absolute bottom-2 left-2 flex gap-1 z-20">
+                    <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold px-2 py-1 rounded-lg flex items-center gap-1"><span className="text-blue-400">P</span> {recipe.macros.protein}g</span>
+                    <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold px-2 py-1 rounded-lg flex items-center gap-1"><span className="text-yellow-400">C</span> {recipe.macros.carbs}g</span>
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${recipe.difficulty === 'Easy' ? 'bg-green-500/10 text-green-400' : recipe.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'}`}>
-                    {recipe.difficulty}
-                  </span>
+
+                  <button onClick={() => toggleLike(recipe.id)} className="cursor-pointer absolute top-3 right-3 bg-black/30 backdrop-blur-md p-2 rounded-xl text-white hover:bg-black/50 transition-colors z-20">
+                    <svg className={`w-5 h-5 ${recipe.isLiked ? 'fill-red-500 text-red-500' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                  </button>
+                </div>
+
+                <div className="p-3 pt-4 flex-1 flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start gap-2 mb-1">
+                      <h3 className="text-white font-black text-lg leading-tight tracking-tight">{recipe.name}</h3>
+                      <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-md border ${recipe.type === 'Veg' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>{recipe.type}</span>
+                    </div>
+                    <div className="flex items-center justify-between mt-3">
+                      <div className="flex items-center gap-3 text-xs font-bold text-slate-400">
+                        <span className="flex items-center gap-1">⏱️ {recipe.time}</span>
+                        <span className="flex items-center gap-1 text-orange-400">🔥 {recipe.calories} cal</span>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${recipe.difficulty === 'Easy' ? 'bg-green-500/10 text-green-400' : recipe.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'}`}>
+                        {recipe.difficulty}
+                      </span>
+                    </div>
+                  </div>
+                  <button onClick={() => openCookMode(recipe)} className="cursor-pointer w-full mt-5 bg-white/5 hover:bg-orange-500 text-white font-black py-3.5 rounded-xl transition-all duration-300 flex justify-center items-center gap-2 group/btn border border-white/5 hover:border-orange-500 shadow-lg">
+                    <span>Start Cooking</span>
+                    <svg className="w-4 h-4 opacity-50 group-hover/btn:opacity-100 group-hover/btn:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                  </button>
                 </div>
               </div>
-              <button onClick={() => openCookMode(recipe)} className="cursor-pointer w-full mt-5 bg-white/5 hover:bg-orange-500 text-white font-black py-3.5 rounded-xl transition-all duration-300 flex justify-center items-center gap-2 group/btn border border-white/5 hover:border-orange-500 shadow-lg">
-                <span>Start Cooking</span>
-                <svg className="w-4 h-4 opacity-50 group-hover/btn:opacity-100 group-hover/btn:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
+            ))
+          )}
+        </div>
+      )}
 
       {/* ========================================= */}
       {/* 🚀 MODAL 1: ADVANCED PRO ADD RECIPE */}
@@ -337,8 +403,8 @@ export default function RecipesTab() {
               
               <button type="submit" disabled={isSaving || isCompressing} className="cursor-pointer w-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-black py-4 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(249,115,22,0.3)] mt-2 flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
                 {isSaving ? (
-                  <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Saving Magic...</>
-                ) : "Save to Cookbook"}
+                  <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Uploading Magic...</>
+                ) : "Save to Cloud"}
               </button>
             </form>
           </div>
