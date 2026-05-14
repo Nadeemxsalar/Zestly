@@ -40,17 +40,18 @@ export default function RecipesTab() {
   const [newCarbs, setNewCarbs] = useState("");
   const [newFats, setNewFats] = useState("");
   const [newDifficulty, setNewDifficulty] = useState<"Easy" | "Medium" | "Hard">("Easy");
-  const [newIngredients, setNewIngredients] = useState("");
-  const [newSteps, setNewSteps] = useState("");
   
-  // Image Upload & Drag-Drop States
+  // Dynamic Inputs
+  const [newIngredients, setNewIngredients] = useState<string[]>([""]);
+  const [newSteps, setNewSteps] = useState<string[]>([""]);
+  
+  // Image Upload States
   const [imageFile, setImageFile] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 🚀 1. FETCH RECIPES FROM SUPABASE
   useEffect(() => {
     fetchRecipes();
   }, []);
@@ -70,7 +71,7 @@ export default function RecipesTab() {
         type: dbRecipe.type as any || "Veg",
         category: dbRecipe.category || "Quick Meal",
         emoji: dbRecipe.emoji || (dbRecipe.type === "Veg" ? "🥗" : "🥩"),
-        gradient: dbRecipe.gradient || "from-orange-500 to-red-600",
+        gradient: dbRecipe.gradient || (dbRecipe.type === "Veg" ? "from-green-500 to-emerald-600" : "from-orange-500 to-red-600"),
         isLiked: dbRecipe.is_liked || false,
         ingredients: dbRecipe.ingredients || [],
         steps: dbRecipe.steps || [],
@@ -83,19 +84,15 @@ export default function RecipesTab() {
     setIsLoadingDB(false);
   };
 
-  // 🚀 2. UPDATE LIKE STATUS IN SUPABASE
   const toggleLike = async (id: string) => {
     const recipe = recipes.find(r => r.id === id);
     if (!recipe) return;
     
-    // UI jaldi update karne ke liye
     setRecipes(recipes.map(r => r.id === id ? { ...r, isLiked: !r.isLiked } : r));
-    
-    // DB background mein update
     await supabase.from("recipes").update({ is_liked: !recipe.isLiked }).eq("id", id);
   };
 
-  // 🚀 ADVANCED: Image Compression Logic
+  // 🚀 ADVANCED: Image Compression
   const processImageFile = (file: File) => {
     if (!file || !file.type.startsWith('image/')) return;
     setIsCompressing(true);
@@ -107,15 +104,22 @@ export default function RecipesTab() {
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const MAX_WIDTH = 800; // Better quality, still small size
-        const scaleSize = MAX_WIDTH / img.width;
-        canvas.width = MAX_WIDTH;
-        canvas.height = img.height * scaleSize;
+        const MAX_WIDTH = 1000; 
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width);
+          width = MAX_WIDTH;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
 
         const ctx = canvas.getContext("2d");
         ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-        const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7);
+        const compressedBase64 = canvas.toDataURL("image/jpeg", 0.8);
         setImageFile(compressedBase64);
         setIsCompressing(false);
       };
@@ -134,7 +138,27 @@ export default function RecipesTab() {
     if (e.dataTransfer.files?.[0]) processImageFile(e.dataTransfer.files[0]);
   };
 
-  // 🚀 3. SAVE TO SUPABASE DB & STORAGE
+  // --- DYNAMIC INPUT HANDLERS ---
+  const handleIngredientChange = (index: number, value: string) => {
+    const updated = [...newIngredients];
+    updated[index] = value;
+    setNewIngredients(updated);
+  };
+  const addIngredientField = () => setNewIngredients([...newIngredients, ""]);
+  const removeIngredientField = (index: number) => {
+    if (newIngredients.length > 1) setNewIngredients(newIngredients.filter((_, i) => i !== index));
+  };
+
+  const handleStepChange = (index: number, value: string) => {
+    const updated = [...newSteps];
+    updated[index] = value;
+    setNewSteps(updated);
+  };
+  const addStepField = () => setNewSteps([...newSteps, ""]);
+  const removeStepField = (index: number) => {
+    if (newSteps.length > 1) setNewSteps(newSteps.filter((_, i) => i !== index));
+  };
+
   const handleAddRecipe = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName) return;
@@ -142,8 +166,9 @@ export default function RecipesTab() {
     setIsSaving(true);
     let finalImageUrl = undefined;
 
-    // Image Upload to Storage Bucket
+    // 🔥 SMART FALLBACK LOGIC ADDED HERE 🔥
     if (imageFile) {
+      finalImageUrl = imageFile; // Fallback: Pehle base64 string set kar do
       try {
         const fetchRes = await fetch(imageFile);
         const blob = await fetchRes.blob();
@@ -153,14 +178,20 @@ export default function RecipesTab() {
           .from("recipe-images")
           .upload(fileName, blob, { contentType: "image/jpeg" });
 
-        if (!uploadError) {
+        if (!uploadError && uploadData) {
           const { data: publicUrlData } = supabase.storage.from("recipe-images").getPublicUrl(fileName);
-          finalImageUrl = publicUrlData.publicUrl;
+          finalImageUrl = publicUrlData.publicUrl; // Agar bucket hai aur chal gaya, to public URL set kar do
+        } else {
+          console.warn("Storage bucket issue. Saving directly to database instead.");
         }
       } catch (err) {
-        console.error("Image processing error", err);
+        console.error("Image upload skipped:", err);
       }
     }
+
+    const finalIngredients = newIngredients.filter(i => i.trim() !== "");
+    const finalSteps = newSteps.filter(s => s.trim() !== "");
+    const defaultGradient = newType === "Veg" ? "from-green-500 to-emerald-600" : "from-orange-500 to-red-600";
 
     const newRecipeData = {
       name: newName, 
@@ -169,10 +200,10 @@ export default function RecipesTab() {
       type: newType, 
       category: newProtein && parseInt(newProtein) > 20 ? "High Protein" : "Quick Meal", 
       emoji: newType === "Veg" ? "🥗" : "🥩", 
-      gradient: "from-blue-500 to-indigo-600", 
+      gradient: defaultGradient, 
       is_liked: false,
-      ingredients: newIngredients ? newIngredients.split('\n').filter(i => i.trim() !== "") : ["Secret Ingredient"], 
-      steps: newSteps ? newSteps.split('\n').filter(s => s.trim() !== "") : ["Mix and cook."],
+      ingredients: finalIngredients.length > 0 ? finalIngredients : ["Secret Ingredient"], 
+      steps: finalSteps.length > 0 ? finalSteps : ["Mix and cook."],
       image_url: finalImageUrl, 
       macros: { 
         protein: newProtein ? parseInt(newProtein) : 10, 
@@ -203,12 +234,13 @@ export default function RecipesTab() {
         difficulty: dbRecipe.difficulty
       };
       setRecipes([addedRecipe, ...recipes]);
+    } else {
+      console.error("Insert Error: ", error);
     }
 
-    // Reset Form
     setIsAddModalOpen(false); 
     setNewName(""); setNewTime(""); setNewCalories(""); setNewProtein(""); setNewCarbs(""); setNewFats("");
-    setNewIngredients(""); setNewSteps(""); setImageFile(null); setIsSaving(false);
+    setNewIngredients([""]); setNewSteps([""]); setImageFile(null); setIsSaving(false);
   };
 
   const openCookMode = (recipe: Recipe) => { setCookModeRecipe(recipe); setPortions(1); setCurrentStep(-1); };
@@ -229,10 +261,9 @@ export default function RecipesTab() {
             <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span> {isLoadingDB ? "Loading..." : `${recipes.length} Recipes`}
           </p>
         </div>
-        {/* 🔥 NEW PROFESSIONAL ADD RECIPE ICON */}
-        <button onClick={() => setIsAddModalOpen(true)} className="cursor-pointer bg-gradient-to-br from-orange-400 to-red-500 hover:from-orange-500 hover:to-red-600 text-white p-3 rounded-2xl shadow-[0_0_20px_rgba(249,115,22,0.4)] transition-all active:scale-95">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253M12 9v6m-3-3h6" />
+        <button onClick={() => setIsAddModalOpen(true)} className="cursor-pointer bg-gradient-to-br from-orange-400 to-red-500 hover:from-orange-500 hover:to-red-600 text-white p-3.5 rounded-full shadow-[0_0_20px_rgba(249,115,22,0.4)] transition-all active:scale-95 group">
+          <svg className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
         </button>
       </div>
@@ -272,20 +303,24 @@ export default function RecipesTab() {
             filteredRecipes.map((recipe) => (
               <div key={recipe.id} className="group bg-white/[0.02] hover:bg-white/[0.04] border border-white/10 p-2.5 rounded-[2rem] backdrop-blur-sm transition-all duration-300 hover:shadow-2xl flex flex-col">
                 
-                <div className={`w-full h-36 rounded-[1.5rem] relative overflow-hidden flex items-center justify-center shadow-inner ${!recipe.imageUrl ? `bg-gradient-to-br ${recipe.gradient}` : 'bg-black/50'}`}>
+                {/* DEFAULT GRADIENT IF NO IMAGE */}
+                <div className={`w-full h-40 sm:h-44 rounded-[1.5rem] relative overflow-hidden flex items-center justify-center shadow-inner ${!recipe.imageUrl ? `bg-gradient-to-br ${recipe.gradient}` : 'bg-[#0b0b0e]'}`}>
                   {recipe.imageUrl ? (
-                    <img src={recipe.imageUrl} alt={recipe.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                    <>
+                      <div className="absolute inset-0 bg-cover bg-center blur-xl opacity-40 group-hover:opacity-60 group-hover:scale-110 transition-all duration-700" style={{ backgroundImage: `url(${recipe.imageUrl})` }}></div>
+                      <img src={recipe.imageUrl} alt={recipe.name} className="relative z-10 w-full h-full object-contain group-hover:scale-105 transition-transform duration-700 p-1 rounded-[1.5rem]" />
+                    </>
                   ) : (
                     <span className="text-6xl drop-shadow-2xl group-hover:scale-110 transition-transform duration-500">{recipe.emoji}</span>
                   )}
                   
                   {/* Macro Tags Overlay */}
                   <div className="absolute bottom-2 left-2 flex gap-1 z-20">
-                    <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold px-2 py-1 rounded-lg flex items-center gap-1"><span className="text-blue-400">P</span> {recipe.macros.protein}g</span>
-                    <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold px-2 py-1 rounded-lg flex items-center gap-1"><span className="text-yellow-400">C</span> {recipe.macros.carbs}g</span>
+                    <span className="bg-black/80 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold px-2 py-1 rounded-lg flex items-center gap-1"><span className="text-blue-400">P</span> {recipe.macros.protein}g</span>
+                    <span className="bg-black/80 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold px-2 py-1 rounded-lg flex items-center gap-1"><span className="text-yellow-400">C</span> {recipe.macros.carbs}g</span>
                   </div>
 
-                  <button onClick={() => toggleLike(recipe.id)} className="cursor-pointer absolute top-3 right-3 bg-black/30 backdrop-blur-md p-2 rounded-xl text-white hover:bg-black/50 transition-colors z-20">
+                  <button onClick={() => toggleLike(recipe.id)} className="cursor-pointer absolute top-3 right-3 bg-black/50 backdrop-blur-md p-2 rounded-xl text-white hover:bg-black/80 transition-colors z-20">
                     <svg className={`w-5 h-5 ${recipe.isLiked ? 'fill-red-500 text-red-500' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
                   </button>
                 </div>
@@ -306,7 +341,6 @@ export default function RecipesTab() {
                       </span>
                     </div>
                   </div>
-                  {/* 🔥 NEW PROFESSIONAL START COOKING ICON */}
                   <button onClick={() => openCookMode(recipe)} className="cursor-pointer w-full mt-5 bg-white/5 hover:bg-orange-500 text-white font-black py-3.5 rounded-xl transition-all duration-300 flex justify-center items-center gap-2 group/btn border border-white/5 hover:border-orange-500 shadow-lg">
                     <span>Start Cooking</span>
                     <svg className="w-5 h-5 opacity-50 group-hover/btn:opacity-100 group-hover/btn:rotate-12 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -332,33 +366,37 @@ export default function RecipesTab() {
               <button disabled={isSaving} onClick={() => setIsAddModalOpen(false)} className="cursor-pointer text-slate-400 hover:bg-white/10 w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-50 transition-colors">✕</button>
             </div>
             
-            <form onSubmit={handleAddRecipe} className="space-y-5">
+            <form onSubmit={handleAddRecipe} className="space-y-6">
               
-              {/* DRAG AND DROP IMAGE UPLOAD */}
+              {/* 🔥 NEW PROFESSIONAL UPLOAD ICON SVG */}
               <div 
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 onClick={() => !imageFile && !isCompressing && fileInputRef.current?.click()}
-                className={`relative w-full h-40 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center group overflow-hidden ${isDragging ? 'border-orange-500 bg-orange-500/10' : 'border-white/20 hover:border-orange-500/50 bg-white/[0.02] cursor-pointer'}`}
+                className={`relative w-full h-48 sm:h-52 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center group overflow-hidden ${isDragging ? 'border-orange-500 bg-orange-500/10' : 'border-white/20 hover:border-orange-500/50 bg-[#07070a] cursor-pointer shadow-inner'}`}
               >
                 <input type="file" accept="image/*" onChange={handleImageChange} ref={fileInputRef} disabled={isCompressing || isSaving} className="hidden" />
                 
                 {isCompressing ? (
                   <div className="flex flex-col items-center gap-3">
                     <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-orange-400 font-bold text-sm animate-pulse">Compressing Image...</p>
+                    <p className="text-orange-400 font-bold text-sm animate-pulse">Processing Image...</p>
                   </div>
                 ) : imageFile ? (
-                  <>
-                    <img src={imageFile} alt="Preview" className="absolute inset-0 w-full h-full object-cover" />
+                  <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-black/60">
+                    <div className="absolute inset-0 bg-cover bg-center blur-xl opacity-60 scale-110" style={{ backgroundImage: `url(${imageFile})` }}></div>
+                    <img src={imageFile} alt="Preview" className="relative z-10 w-full h-full object-contain drop-shadow-2xl p-1 rounded-xl" />
+                    
                     <button type="button" onClick={(e) => { e.stopPropagation(); setImageFile(null); }} className="absolute top-2 right-2 bg-black/70 hover:bg-red-500 text-white w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md transition-all shadow-lg z-20">✕</button>
-                  </>
+                  </div>
                 ) : (
                   <>
-                    <div className={`text-4xl mb-2 transition-transform duration-300 ${isDragging ? 'scale-125' : 'group-hover:-translate-y-2'}`}>📸</div>
+                    <svg className={`w-12 h-12 mb-3 text-slate-400 transition-transform duration-300 ${isDragging ? 'scale-125 text-orange-400' : 'group-hover:-translate-y-2 group-hover:text-orange-400'}`} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                    </svg>
                     <p className="text-white font-bold text-sm">{isDragging ? 'Drop Image Here!' : 'Tap or Drag Food Photo Here'}</p>
-                    <p className="text-slate-500 text-xs mt-1">JPEG, PNG • Auto-compressed</p>
+                    <p className="text-slate-500 text-xs mt-1">JPEG, PNG • Aspect Ratio Preserved</p>
                   </>
                 )}
               </div>
@@ -384,8 +422,8 @@ export default function RecipesTab() {
               </div>
 
               {/* ROW 3: Macros */}
-              <div className="bg-white/[0.02] border border-white/5 p-3 rounded-2xl">
-                <p className="text-slate-400 text-xs font-bold mb-3 uppercase tracking-wider pl-1">Macros (per serving)</p>
+              <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
+                <p className="text-slate-400 text-xs font-bold mb-3 uppercase tracking-wider">Macros (per serving)</p>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="flex items-center bg-black/40 rounded-xl px-3 py-2 border border-white/5">
                     <span className="text-blue-400 font-bold text-xs mr-2">P</span>
@@ -405,10 +443,45 @@ export default function RecipesTab() {
                 </div>
               </div>
 
-              <textarea placeholder="Ingredients (One per line)&#10;e.g. 2 Eggs&#10;1 Onion" value={newIngredients} onChange={(e) => setNewIngredients(e.target.value)} disabled={isSaving} rows={3} className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-white outline-none focus:border-orange-500 transition-all disabled:opacity-50 resize-none text-sm placeholder:text-slate-500"></textarea>
-              <textarea placeholder="Steps (One per line)&#10;e.g. Fry the onions.&#10;Add spices and mix." value={newSteps} onChange={(e) => setNewSteps(e.target.value)} disabled={isSaving} rows={3} className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-white outline-none focus:border-orange-500 transition-all disabled:opacity-50 resize-none text-sm placeholder:text-slate-500"></textarea>
+              {/* DYNAMIC INGREDIENTS */}
+              <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl space-y-3">
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Ingredients</p>
+                {newIngredients.map((ing, idx) => (
+                  <div key={`ing-${idx}`} className="flex gap-2 items-center">
+                    <div className="w-6 text-center text-xs font-bold text-slate-500">{idx + 1}.</div>
+                    <input type="text" placeholder="e.g. 2 Chopped Onions" value={ing} onChange={(e) => handleIngredientChange(idx, e.target.value)} disabled={isSaving} className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-orange-500 transition-all text-sm" required />
+                    {newIngredients.length > 1 && (
+                      <button type="button" onClick={() => removeIngredientField(idx)} className="text-slate-500 hover:text-red-500 p-2 transition-colors">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button type="button" onClick={addIngredientField} className="text-orange-400 hover:text-orange-300 text-sm font-bold flex items-center gap-1 mt-1 ml-8 transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg> Add Ingredient
+                </button>
+              </div>
+
+              {/* DYNAMIC STEPS */}
+              <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl space-y-3">
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Cooking Steps</p>
+                {newSteps.map((step, idx) => (
+                  <div key={`step-${idx}`} className="flex gap-2 items-start">
+                    <div className="w-6 pt-2.5 text-center text-xs font-bold text-slate-500">{idx + 1}.</div>
+                    <textarea placeholder="e.g. Heat oil in a pan..." value={step} onChange={(e) => handleStepChange(idx, e.target.value)} disabled={isSaving} rows={2} className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-orange-500 transition-all text-sm resize-none" required></textarea>
+                    {newSteps.length > 1 && (
+                      <button type="button" onClick={() => removeStepField(idx)} className="text-slate-500 hover:text-red-500 p-2 mt-1 transition-colors">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button type="button" onClick={addStepField} className="text-orange-400 hover:text-orange-300 text-sm font-bold flex items-center gap-1 mt-1 ml-8 transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg> Add Step
+                </button>
+              </div>
               
-              <button type="submit" disabled={isSaving || isCompressing} className="cursor-pointer w-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-black py-4 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(249,115,22,0.3)] mt-2 flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+              <button type="submit" disabled={isSaving || isCompressing} className="cursor-pointer w-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-black py-4 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(249,115,22,0.3)] mt-4 flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
                 {isSaving ? (
                   <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Uploading Magic...</>
                 ) : "Save to Cloud"}
