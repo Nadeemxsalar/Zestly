@@ -1,6 +1,10 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
-import { supabase } from "@/lib/supabase"; // 🔥 SUPABASE CONNECTED
+import { supabase } from "@/lib/supabase"; 
+
+interface PantryTabProps {
+  user?: any;
+}
 
 interface PantryItem {
   id: string;
@@ -12,7 +16,6 @@ interface PantryItem {
   pricePerUnit: number;
 }
 
-// 4. Auto-Emoji & Category Logic
 const analyzeItem = (name: string) => {
   const lower = name.toLowerCase();
   if (lower.match(/milk|cheese|butter|paneer|egg|yogurt|curd/)) return { cat: "Dairy", emoji: "🧀" };
@@ -23,7 +26,7 @@ const analyzeItem = (name: string) => {
   return { cat: "Staples", emoji: "🥫" };
 };
 
-export default function PantryTab() {
+export default function PantryTab({ user }: PantryTabProps) {
   const [items, setItems] = useState<PantryItem[]>([]);
   const [isLoadingDB, setIsLoadingDB] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
@@ -31,11 +34,9 @@ export default function PantryTab() {
   const [newItemName, setNewItemName] = useState("");
   const [newItemUnit, setNewItemUnit] = useState("Kg");
   
-  // 2. View & 3. Filter States
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [filter, setFilter] = useState<"all" | "urgent" | "low">("all");
 
-  // 🚀 1. FETCH FROM SUPABASE
   useEffect(() => {
     fetchPantryItems();
   }, []);
@@ -61,7 +62,6 @@ export default function PantryTab() {
     setIsLoadingDB(false);
   };
 
-  // 🚀 2. SEED DEFAULT DATA TO SUPABASE (Magical Button Logic)
   const seedDefaultItems = async () => {
     setIsSeeding(true);
     const defaultData = [
@@ -87,7 +87,6 @@ export default function PantryTab() {
     setIsSeeding(false);
   };
 
-  // 🚀 3. ADD TO SUPABASE
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemName) return;
@@ -101,7 +100,7 @@ export default function PantryTab() {
       unit: newItemUnit,
       category: cat,
       expiry_date: newExpiryDate,
-      price_per_unit: 100 // Mock price
+      price_per_unit: 100 
     };
 
     const { data, error } = await supabase.from("pantry").insert([newItemData]).select();
@@ -121,19 +120,16 @@ export default function PantryTab() {
     setNewItemName("");
   };
 
-  // 🚀 4. UPDATE OR DELETE IN SUPABASE
   const handleUpdateQty = async (id: string, delta: number) => {
     const itemToUpdate = items.find(i => i.id === id);
     if (!itemToUpdate) return;
 
     const newQty = Math.max(0, parseFloat((itemToUpdate.qty + delta).toFixed(2)));
 
-    // Agar Quantity 0 ho gayi, toh Database se delete kardo
     if (newQty <= 0) {
-      setItems(items.filter(i => i.id !== id)); // Fast UI Update
-      await supabase.from("pantry").delete().eq("id", id); // Background DB Delete
+      setItems(items.filter(i => i.id !== id)); 
+      await supabase.from("pantry").delete().eq("id", id); 
     } else {
-      // Quantity update karo
       setItems(items.map(i => i.id === id ? { ...i, qty: newQty } : i));
       await supabase.from("pantry").update({ qty: newQty }).eq("id", id);
     }
@@ -141,7 +137,6 @@ export default function PantryTab() {
 
   const getDaysLeft = (dateStr: string) => Math.ceil((new Date(dateStr).getTime() - new Date().getTime()) / (86400000));
 
-  // 1. Pantry Worth & Stats
   const stats = useMemo(() => {
     const totalValue = items.reduce((acc, item) => acc + (item.qty * item.pricePerUnit), 0);
     const urgent = items.filter(i => getDaysLeft(i.expiryDate) <= 3).length;
@@ -149,7 +144,6 @@ export default function PantryTab() {
     return { totalValue, urgent, lowStock };
   }, [items]);
 
-  // Filtered Items
   const filteredItems = items.filter(item => {
     if (filter === "urgent") return getDaysLeft(item.expiryDate) <= 3;
     if (filter === "low") return (item.unit === 'Kg' || item.unit === 'Liters') ? item.qty < 1 : item.qty < 2;
@@ -157,87 +151,95 @@ export default function PantryTab() {
   });
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6 pb-10 relative max-w-full overflow-x-hidden sm:overflow-visible">
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6 pb-10 relative max-w-full overflow-x-hidden sm:overflow-visible cursor-default selection:bg-orange-500/10">
       
-      {/* Background Mesh Glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[150%] h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-500/10 via-[#07070a]/0 to-transparent pointer-events-none -z-10"></div>
+      {/* 🚀 Premium Glow Background */}
+      <div className="absolute top-[-100px] left-1/2 -translate-x-1/2 w-[150%] h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-100/60 via-slate-50 to-transparent dark:from-orange-500/10 dark:via-[#07070a]/0 dark:to-transparent pointer-events-none -z-10 transition-colors duration-500"></div>
 
-      {/* --- HEADER INSIGHTS (Responsive Flex) --- */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end px-1 gap-4 sm:gap-0">
+      {/* --- HEADER INSIGHTS --- */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end px-1 gap-4 sm:gap-0 pt-2">
         <div>
-          <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-500 tracking-tight mb-1">My Pantry</h2>
-          {/* 1. Net Worth Tracker */}
-          <p className="text-orange-400 font-bold text-sm flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shrink-0"></span>
+          <h2 className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tighter mb-1.5 transition-colors">My Pantry</h2>
+          <p className="text-orange-500 font-bold text-sm flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shrink-0 shadow-[0_0_8px_#f9731666]"></span>
             {isLoadingDB ? "Syncing Cloud..." : `Total Worth: ₹${stats.totalValue.toLocaleString()}`}
           </p>
         </div>
         
-        {/* 2. Grid/List Toggle */}
-        <div className="flex bg-white/5 p-1 rounded-xl ring-1 ring-white/10 shadow-lg self-end sm:self-auto">
-          <button onClick={() => setViewMode("list")} className={`p-2 rounded-lg transition-all ${viewMode === "list" ? "bg-white/10 text-white shadow-md" : "text-slate-500 hover:text-white"}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        {/* Grid/List Toggle */}
+        <div className="flex bg-white dark:bg-white/5 p-1.5 rounded-[1rem] border border-slate-200 dark:border-white/10 shadow-[0_4px_15px_#0000000d] dark:shadow-none self-end sm:self-auto transition-colors">
+          <button onClick={() => setViewMode("list")} className={`p-2 rounded-xl transition-all outline-none [-webkit-tap-highlight-color:transparent] ${viewMode === "list" ? "bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-white"}`}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
           </button>
-          <button onClick={() => setViewMode("grid")} className={`p-2 rounded-lg transition-all ${viewMode === "grid" ? "bg-white/10 text-white shadow-md" : "text-slate-500 hover:text-white"}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+          <button onClick={() => setViewMode("grid")} className={`p-2 rounded-xl transition-all outline-none [-webkit-tap-highlight-color:transparent] ${viewMode === "grid" ? "bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-white"}`}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
           </button>
         </div>
       </div>
 
-      {/* --- SMART WIDGETS ROW (Responsive Grid) --- */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* 5. AI Recipe Matcher */}
-        <div className="bg-gradient-to-br from-indigo-500/20 to-purple-500/5 ring-1 ring-indigo-500/30 p-4 rounded-3xl backdrop-blur-xl relative overflow-hidden group">
-          <div className="absolute -right-4 -bottom-4 text-6xl opacity-20 group-hover:scale-110 transition-transform">🍳</div>
-          <h3 className="text-indigo-300 text-xs font-bold uppercase tracking-wider mb-1">AI Kitchen</h3>
-          <p className="text-2xl font-black text-white">{Math.floor(items.length * 1.5)} <span className="text-sm font-medium text-slate-300">Recipes</span></p>
-          <button className="mt-2 text-[10px] font-bold bg-indigo-500/20 text-indigo-300 px-3 py-1.5 rounded-full hover:bg-indigo-500/40 transition-colors">View Matches →</button>
+      {/* --- SMART WIDGETS ROW --- */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* AI Recipe Matcher */}
+        <div className="bg-linear-to-br from-indigo-50 to-purple-50 dark:from-indigo-500/10 dark:to-purple-500/5 border border-indigo-200 dark:border-indigo-500/20 p-5 rounded-[2rem] backdrop-blur-xl relative overflow-hidden group shadow-sm dark:shadow-none transition-colors">
+          <div className="absolute -right-4 -bottom-4 text-6xl opacity-30 dark:opacity-20 group-hover:scale-110 transition-transform duration-500">🍳</div>
+          <h3 className="text-indigo-600 dark:text-indigo-300 text-xs font-black uppercase tracking-widest mb-1.5">AI Kitchen</h3>
+          <p className="text-3xl font-black text-slate-900 dark:text-white leading-tight">{Math.floor(items.length * 1.5)} <span className="text-sm font-bold text-slate-500 dark:text-slate-400">Recipes</span></p>
+          <button className="mt-3 text-[10px] font-extrabold bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 px-3.5 py-2 rounded-full hover:bg-indigo-200 dark:hover:bg-indigo-500/30 transition-colors outline-none [-webkit-tap-highlight-color:transparent]">View Matches →</button>
         </div>
 
-        {/* 9. Nutritional Scanner */}
-        <div className="bg-gradient-to-br from-emerald-500/20 to-teal-500/5 ring-1 ring-emerald-500/30 p-4 rounded-3xl backdrop-blur-xl relative overflow-hidden group">
-          <div className="absolute -right-4 -bottom-4 text-6xl opacity-20 group-hover:scale-110 transition-transform">🥑</div>
-          <h3 className="text-emerald-300 text-xs font-bold uppercase tracking-wider mb-1">Pantry Vibe</h3>
-          <p className="text-lg font-black text-white leading-tight">High Protein</p>
-          <div className="flex gap-1 mt-3">
-             <div className="h-1.5 flex-1 bg-emerald-500 rounded-full shadow-[0_0_8px_#10b981]"></div>
-             <div className="h-1.5 w-1/4 bg-slate-600 rounded-full"></div>
-             <div className="h-1.5 w-1/4 bg-slate-600 rounded-full"></div>
+        {/* Nutritional Scanner */}
+        <div className="bg-linear-to-br from-emerald-50 to-teal-50 dark:from-emerald-500/10 dark:to-teal-500/5 border border-emerald-200 dark:border-emerald-500/20 p-5 rounded-[2rem] backdrop-blur-xl relative overflow-hidden group shadow-sm dark:shadow-none transition-colors">
+          <div className="absolute -right-4 -bottom-4 text-6xl opacity-30 dark:opacity-20 group-hover:scale-110 transition-transform duration-500">🥑</div>
+          <h3 className="text-emerald-600 dark:text-emerald-300 text-xs font-black uppercase tracking-widest mb-1.5">Pantry Vibe</h3>
+          <p className="text-xl font-black text-slate-900 dark:text-white leading-tight">High Protein</p>
+          <div className="flex gap-1.5 mt-4">
+             <div className="h-2 flex-1 bg-emerald-500 rounded-full shadow-[0_0_8px_#10b98166]"></div>
+             <div className="h-2 w-1/4 bg-slate-200 dark:bg-slate-600 rounded-full"></div>
+             <div className="h-2 w-1/4 bg-slate-200 dark:bg-slate-600 rounded-full"></div>
           </div>
         </div>
       </div>
 
-      {/* --- PRO INPUT BAR (Responsive Form) --- */}
+      {/* --- PRO INPUT BAR --- */}
       <div className="relative group z-20 w-full">
-        <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500 to-rose-500 rounded-[2rem] blur-md opacity-30 group-focus-within:opacity-60 transition duration-500"></div>
-        <form onSubmit={handleAddItem} className="relative bg-black/60 backdrop-blur-2xl ring-1 ring-white/10 p-1.5 sm:p-1.5 rounded-[1.5rem] sm:rounded-[2rem] flex items-center shadow-2xl w-full">
+        <div className="absolute -inset-0.5 bg-linear-to-r from-orange-400 to-rose-400 rounded-[2.2rem] blur-lg opacity-0 dark:opacity-20 group-focus-within:opacity-20 dark:group-focus-within:opacity-50 transition duration-500"></div>
+        <form onSubmit={handleAddItem} className="relative bg-white dark:bg-black/60 backdrop-blur-2xl border border-slate-200 dark:border-white/10 p-2 sm:p-2 rounded-[2rem] flex items-center shadow-[0_8px_30px_#0000000d] dark:shadow-2xl w-full transition-all focus-within:border-orange-500/40">
           
-          <button type="button" className="p-2 sm:p-3.5 shrink-0 text-slate-400 hover:text-orange-400 hover:bg-white/5 rounded-2xl transition-all">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
-          </button>
+          <div className="pl-4 pr-2 text-slate-400">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+          </div>
           
           <input 
             type="text" 
             value={newItemName} onChange={(e) => setNewItemName(e.target.value)}
-            placeholder="Add items..." 
-            className="flex-1 min-w-[80px] w-full bg-transparent text-white font-medium px-1 sm:px-2 outline-none placeholder:text-slate-500 text-sm sm:text-base"
+            placeholder="Add pantry item..." 
+            className="flex-1 min-w-[80px] w-full bg-transparent text-slate-900 dark:text-white font-semibold px-2 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm sm:text-base cursor-text"
           />
-          <select value={newItemUnit} onChange={(e) => setNewItemUnit(e.target.value)} className="shrink-0 bg-white/5 text-orange-400 font-bold rounded-xl px-1 py-2 sm:px-2 sm:py-2.5 outline-none appearance-none text-center min-w-[40px] sm:min-w-[50px] mr-1 text-xs sm:text-sm">
-            <option className="bg-black text-white">Kg</option><option className="bg-black text-white">g</option><option className="bg-black text-white">L</option><option className="bg-black text-white">Pcs</option>
-          </select>
-          <button type="submit" disabled={!newItemName} className="shrink-0 bg-gradient-to-br from-orange-400 to-red-500 text-white font-black p-3 sm:p-4 rounded-xl sm:rounded-[1.5rem] shadow-lg hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+          <div className="relative shrink-0 mr-2">
+            <select value={newItemUnit} onChange={(e) => setNewItemUnit(e.target.value)} className="bg-slate-100 dark:bg-white/5 text-orange-600 dark:text-orange-400 font-extrabold rounded-[1rem] pl-3 pr-7 py-2.5 sm:py-3 outline-none appearance-none min-w-[50px] sm:min-w-[60px] text-xs sm:text-sm cursor-pointer outline-none [-webkit-tap-highlight-color:transparent]">
+              <option className="bg-white dark:bg-black text-slate-900 dark:text-white">Kg</option>
+              <option className="bg-white dark:bg-black text-slate-900 dark:text-white">g</option>
+              <option className="bg-white dark:bg-black text-slate-900 dark:text-white">L</option>
+              <option className="bg-white dark:bg-black text-slate-900 dark:text-white">Pcs</option>
+            </select>
+            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-orange-500 dark:text-orange-400">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </div>
+          </div>
+
+          <button type="submit" disabled={!newItemName} className="shrink-0 bg-linear-to-br from-orange-400 to-red-500 text-white font-black p-3.5 sm:p-4 rounded-[1.2rem] sm:rounded-[1.5rem] shadow-[0_4px_15px_#f973164d] hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed outline-none [-webkit-tap-highlight-color:transparent]">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"/></svg>
           </button>
         </form>
       </div>
 
-      {/* 3. SMART FILTER CHIPS (Scrollable) */}
-      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2 w-full snap-x">
-        <button onClick={() => setFilter("all")} className={`snap-start whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all ${filter === "all" ? "bg-white text-black shadow-lg" : "bg-white/5 text-slate-400 hover:bg-white/10"}`}>All Items ({items.length})</button>
-        <button onClick={() => setFilter("urgent")} className={`snap-start whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${filter === "urgent" ? "bg-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)]" : "bg-red-500/10 text-red-400 border border-red-500/20"}`}>
+      {/* 🚀 SMART FILTER CHIPS (Invisible Scrollbar) */}
+      <div className="flex gap-2.5 overflow-x-auto pb-2.5 w-full snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <button onClick={() => setFilter("all")} className={`snap-start whitespace-nowrap px-5 py-3 rounded-full text-xs font-extrabold transition-all outline-none [-webkit-tap-highlight-color:transparent] ${filter === "all" ? "bg-slate-900 text-white dark:bg-white dark:text-black shadow-[0_4px_15px_#00000026] dark:shadow-md" : "bg-white text-slate-600 border border-slate-200 hover:border-slate-300 dark:bg-white/5 dark:text-slate-400 dark:border-white/10 dark:hover:bg-white/10"}`}>All Items ({items.length})</button>
+        <button onClick={() => setFilter("urgent")} className={`snap-start whitespace-nowrap px-5 py-3 rounded-full text-xs font-extrabold transition-all flex items-center gap-1.5 border outline-none [-webkit-tap-highlight-color:transparent] ${filter === "urgent" ? "bg-red-500 text-white border-red-500 shadow-[0_4px_15px_#ef44444d]" : "bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"}`}>
           <span className="w-2 h-2 rounded-full bg-current animate-pulse"></span> Expiring Soon ({stats.urgent})
         </button>
-        <button onClick={() => setFilter("low")} className={`snap-start whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${filter === "low" ? "bg-yellow-500 text-black shadow-[0_0_15px_rgba(234,179,8,0.4)]" : "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20"}`}>
+        <button onClick={() => setFilter("low")} className={`snap-start whitespace-nowrap px-5 py-3 rounded-full text-xs font-extrabold transition-all flex items-center gap-1.5 border outline-none [-webkit-tap-highlight-color:transparent] ${filter === "low" ? "bg-yellow-500 text-black border-yellow-500 shadow-[0_4px_15px_#eab3084d]" : "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-500/10 dark:text-yellow-500 dark:border-yellow-500/20"}`}>
           ⚠️ Low Stock ({stats.lowStock})
         </button>
       </div>
@@ -248,7 +250,7 @@ export default function PantryTab() {
           <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
         </div>
       ) : (
-        <div className={viewMode === "grid" ? "grid grid-cols-1 sm:grid-cols-2 gap-3" : "flex flex-col space-y-3 w-full"}>
+        <div className={viewMode === "grid" ? "grid grid-cols-1 sm:grid-cols-2 gap-4" : "flex flex-col space-y-4 w-full"}>
           {filteredItems.map((item) => {
             const daysLeft = getDaysLeft(item.expiryDate);
             const isUrgent = daysLeft <= 2;
@@ -256,62 +258,55 @@ export default function PantryTab() {
             const { emoji } = analyzeItem(item.name);
 
             return (
-              <div key={item.id} className={`group w-full relative bg-white/[0.02] hover:bg-white/[0.04] border ${isUrgent ? 'border-red-500/30' : 'border-white/10'} rounded-3xl p-4 backdrop-blur-sm transition-all duration-300 hover:shadow-2xl ${viewMode === "grid" ? "flex flex-col" : "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"}`}>
+              <div key={item.id} className={`group w-full relative bg-white dark:bg-white/[0.02] border ${isUrgent ? 'border-red-400/50 dark:border-red-500/30 shadow-[0_4px_20px_#ef44441a]' : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20 shadow-[0_8px_30px_#0000000a] dark:shadow-none'} rounded-[2rem] p-4 sm:p-5 transition-all duration-300 ${viewMode === "grid" ? "flex flex-col" : "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"}`}>
                 
-                {/* 🔥 8. Low Stock Badge - BULLETPROOF FIX (Andar ki taraf safely tuck kiya gaya hai) */}
-                {isLow && <span className="absolute top-3 right-3 bg-yellow-500 text-black text-[9px] font-black uppercase px-2.5 py-1 rounded-lg shadow-lg border border-yellow-400 z-10 flex items-center gap-1">⚠️ Low</span>}
+                {isLow && <span className="absolute top-4 right-4 bg-yellow-400 dark:bg-yellow-500 text-black text-[9px] font-black uppercase px-2.5 py-1 rounded-lg shadow-sm border border-yellow-300 dark:border-yellow-400 z-10 flex items-center gap-1">⚠️ Low</span>}
 
-                {/* Icon & Name */}
-                <div className={`flex ${viewMode === "grid" ? "flex-col mb-4" : "items-center flex-1 gap-3 sm:gap-4 min-w-0 w-full sm:w-auto"}`}>
-                  <div className="w-12 h-12 sm:w-14 sm:h-14 shrink-0 bg-gradient-to-br from-white/10 to-transparent rounded-2xl flex items-center justify-center text-2xl sm:text-3xl shadow-inner ring-1 ring-white/5">
+                <div className={`flex ${viewMode === "grid" ? "flex-col mb-4" : "items-center flex-1 gap-4 min-w-0 w-full sm:w-auto"}`}>
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 shrink-0 bg-slate-50 dark:bg-white/5 rounded-[1.5rem] flex items-center justify-center text-3xl shadow-inner border border-slate-100 dark:border-white/5">
                     {emoji}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h4 className={`text-white font-black tracking-tight truncate ${viewMode === "grid" ? "text-lg mt-3" : "text-base"}`}>{item.name}</h4>
-                    <p className="text-slate-400 text-xs font-medium truncate">{item.category}</p>
+                    <h4 className={`text-slate-900 dark:text-white font-extrabold tracking-tight truncate ${viewMode === "grid" ? "text-xl mt-3" : "text-lg"}`}>{item.name}</h4>
+                    <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider truncate mt-0.5">{item.category}</p>
                   </div>
                 </div>
 
-                {/* Controls & Expiry */}
-                <div className={`flex ${viewMode === "grid" ? "flex-col gap-4" : "items-center justify-between sm:justify-end gap-2 sm:gap-4 w-full sm:w-auto mt-2 sm:mt-0"}`}>
+                <div className={`flex ${viewMode === "grid" ? "flex-col gap-4" : "items-center justify-between sm:justify-end gap-3 sm:gap-5 w-full sm:w-auto mt-2 sm:mt-0"}`}>
                   
-                  {/* Expiry Pill */}
-                  <div className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 ${daysLeft < 0 ? 'bg-slate-800 text-slate-500' : isUrgent ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500/50' : 'bg-green-500/10 text-green-400'}`}>
+                  <div className={`flex items-center justify-center px-3.5 py-2 rounded-xl text-xs font-extrabold shrink-0 border ${daysLeft < 0 ? 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-transparent' : isUrgent ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20' : 'bg-green-50 text-green-600 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-transparent'}`}>
                      {daysLeft < 0 ? 'Expired' : daysLeft === 0 ? 'Last Day!' : `${daysLeft}d left`}
                   </div>
 
-                  <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
-                    {/* +/- Controls */}
-                    <div className="flex items-center bg-black/50 p-1 rounded-xl ring-1 ring-white/5 flex-1 sm:flex-none justify-center min-w-[100px]">
-                      <button onClick={() => handleUpdateQty(item.id, -0.5)} className="w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-all">-</button>
-                      <span className="w-12 text-center font-black text-sm">{item.qty}<span className="text-[9px] text-slate-500 ml-0.5">{item.unit}</span></span>
-                      <button onClick={() => handleUpdateQty(item.id, 0.5)} className="w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-all">+</button>
+                  <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
+                    <div className="flex items-center bg-slate-50 dark:bg-black/40 p-1.5 rounded-xl border border-slate-200 dark:border-white/5 flex-1 sm:flex-none justify-center min-w-[110px] shadow-inner dark:shadow-none">
+                      <button onClick={() => handleUpdateQty(item.id, -0.5)} className="w-8 h-8 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all font-black text-lg outline-none [-webkit-tap-highlight-color:transparent] shadow-sm dark:shadow-none">-</button>
+                      <span className="w-14 text-center font-black text-slate-900 dark:text-white text-sm">{item.qty}<span className="text-[10px] text-slate-500 font-bold ml-1">{item.unit}</span></span>
+                      <button onClick={() => handleUpdateQty(item.id, 0.5)} className="w-8 h-8 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all font-black text-lg outline-none [-webkit-tap-highlight-color:transparent] shadow-sm dark:shadow-none">+</button>
                     </div>
 
-                    {/* 7. Quick Cart Button */}
-                    <button className="w-10 h-10 sm:w-9 sm:h-9 shrink-0 flex items-center justify-center bg-orange-500/10 text-orange-400 hover:bg-orange-500 hover:text-white rounded-xl transition-all" title="Add to Cart">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                    <button className="w-11 h-11 shrink-0 flex items-center justify-center bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 hover:bg-orange-500 hover:text-white rounded-[1rem] transition-all outline-none [-webkit-tap-highlight-color:transparent]" title="Add to Cart">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
                     </button>
                   </div>
-
                 </div>
               </div>
             );
           })}
 
-          {/* 🔥 THE MAGIC BUTTON WHEN PANTRY IS EMPTY 🔥 */}
           {filteredItems.length === 0 && (
-            <div className="col-span-full text-center py-12 px-6 border border-dashed border-white/10 rounded-[2rem] bg-white/[0.01]">
-              <div className="text-4xl mb-3 opacity-50">🛸</div>
-              <p className="text-slate-400 font-medium text-sm mb-5">Pantry is empty. Time to restock!</p>
+            <div className="col-span-full text-center py-16 px-6 border-2 border-dashed border-slate-300 dark:border-white/10 rounded-[2.5rem] bg-white dark:bg-white/[0.01]">
+              <div className="text-5xl mb-4 opacity-50">🛸</div>
+              <h3 className="text-slate-900 dark:text-white font-black text-lg mb-1">Pantry is Empty</h3>
+              <p className="text-slate-500 dark:text-slate-400 font-medium text-sm mb-6">Time to restock your premium kitchen!</p>
               
               <button 
                 onClick={seedDefaultItems} 
                 disabled={isSeeding}
-                className="bg-orange-500/20 text-orange-400 hover:bg-orange-500 hover:text-white border border-orange-500/30 px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg flex items-center gap-2 mx-auto disabled:opacity-50"
+                className="bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 hover:bg-orange-500 hover:text-white px-6 py-3 rounded-xl font-black transition-all flex items-center justify-center gap-2 mx-auto disabled:opacity-50 outline-none [-webkit-tap-highlight-color:transparent]"
               >
                 {isSeeding ? (
-                  <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div> Loading...</>
+                  <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div> Syncing...</>
                 ) : "Load Sample Data 🪄"}
               </button>
             </div>

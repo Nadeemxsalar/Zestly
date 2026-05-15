@@ -1,5 +1,4 @@
 @import "tailwindcss";
 
-body {
-  background-color: #f8fafc;
-}
+/* 🚀 NAYA: Tailwind v4 mein next-themes (Dark Mode) chalane ka magic code */
+@variant dark (&:where(.dark, .dark *));

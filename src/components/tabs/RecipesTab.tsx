@@ -1,9 +1,8 @@
 "use client";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
-import { useRouter } from "next/navigation"; // 🚀 Naya import
+import { useRouter } from "next/navigation"; 
 
-// 🚀 NAYA: TypeScript ko batana ki ye component 'user' receive karega
 interface RecipesTabProps {
   user: any;
 }
@@ -25,11 +24,10 @@ interface Recipe {
   difficulty: "Easy" | "Medium" | "Hard";
 }
 
-// 🚀 Yahan { user } receive kiya
 export default function RecipesTab({ user }: RecipesTabProps) {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [isLoadingDB, setIsLoadingDB] = useState(true);
-  const router = useRouter(); // 🚀 Routing ke liye
+  const router = useRouter();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<"All" | "Veg" | "Non-Veg" | "Quick Meal" | "High Protein">("All");
@@ -91,7 +89,6 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     setIsLoadingDB(false);
   };
 
-  // 🚀 AUTH CHECKER: Bina login wale add/like nahi kar payenge
   const checkAuth = () => {
     if (!user) {
       alert("Chef, you need to log in to use this feature! 🔒👨‍🍳");
@@ -106,7 +103,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
   };
 
   const toggleLike = async (id: string) => {
-    if (!checkAuth()) return; // Bina login walo ko yahi rok dega
+    if (!checkAuth()) return;
 
     const recipe = recipes.find(r => r.id === id);
     if (!recipe) return;
@@ -121,14 +118,13 @@ export default function RecipesTab({ user }: RecipesTabProps) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!checkAuth()) return; // Security
+    if (!checkAuth()) return;
     if (confirm("Are you sure you want to delete this recipe?")) {
       setRecipes(recipes.filter(r => r.id !== id)); 
       await supabase.from("recipes").delete().eq("id", id); 
     }
   };
 
-  // Image Compression
   const processImageFile = (file: File) => {
     if (!file || !file.type.startsWith('image/')) return;
     setIsCompressing(true);
@@ -174,7 +170,6 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     if (e.dataTransfer.files?.[0]) processImageFile(e.dataTransfer.files[0]);
   };
 
-  // Dynamic Handlers
   const handleIngredientChange = (index: number, value: string) => {
     const updated = [...newIngredients]; updated[index] = value; setNewIngredients(updated);
   };
@@ -269,19 +264,20 @@ export default function RecipesTab({ user }: RecipesTabProps) {
   }, [recipes, filter, searchQuery, sortBy]);
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6 pb-24 relative max-w-full overflow-x-hidden cursor-default">
-      <div className="absolute top-0 right-0 w-[150%] h-[400px] bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-red-600/10 via-[#07070a]/0 to-transparent pointer-events-none -z-10"></div>
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-7 pb-24 relative max-w-full overflow-x-hidden cursor-default selection:bg-orange-500/10">
+      
+      {/* 🚀 Premium Glow Background */}
+      <div className="absolute top-0 right-0 w-[150%] h-[400px] bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-red-100/80 via-slate-50 to-transparent dark:from-red-600/10 dark:via-[#07070a]/0 dark:to-transparent pointer-events-none -z-10 transition-colors duration-500"></div>
 
       {/* --- HEADER --- */}
       <div className="flex justify-between items-end px-1 relative z-10 pt-2">
         <div>
-          <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-500 tracking-tight mb-2">Cookbook</h2>
-          <p className="text-orange-400 font-bold text-sm flex items-center gap-2">
+          <h2 className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tighter mb-1.5 transition-colors">Cookbook</h2>
+          <p className="text-orange-500 dark:text-orange-400 font-bold text-sm flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span> {isLoadingDB ? "Loading..." : `${recipes.length} Masterpieces`}
           </p>
         </div>
-        {/* 🚀 Updated onClick to checkAuth */}
-        <button onClick={handleOpenAddModal} className="cursor-pointer bg-gradient-to-br from-orange-400 to-red-500 hover:from-orange-500 hover:to-red-600 text-white p-3.5 rounded-2xl shadow-[0_0_20px_rgba(249,115,22,0.4)] transition-all active:scale-95 group">
+        <button onClick={handleOpenAddModal} className="cursor-pointer bg-linear-to-br from-orange-400 to-red-500 hover:from-orange-500 hover:to-red-600 text-white p-3.5 rounded-[1.2rem] shadow-[0_4px_15px_#f9731666] transition-all active:scale-95 group outline-none [-webkit-tap-highlight-color:transparent]">
           <svg className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
@@ -289,27 +285,37 @@ export default function RecipesTab({ user }: RecipesTabProps) {
       </div>
 
       {/* --- SEARCH, FILTERS & SORTING --- */}
-      <div className="space-y-4 relative z-10 px-1">
-        <div className="flex gap-2">
+      <div className="space-y-4 relative z-10 px-1 pt-1">
+        <div className="flex gap-2.5">
+          {/* Search Box */}
           <div className="relative group flex-1">
-            <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500 to-rose-500 rounded-[2rem] blur-sm opacity-20 group-focus-within:opacity-50 transition duration-500"></div>
-            <div className="relative bg-[#0c0c10] border border-white/[0.08] p-1.5 rounded-[2rem] flex items-center shadow-xl focus-within:border-orange-500/50">
-              <div className="pl-4 text-slate-400"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg></div>
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search recipes..." className="flex-1 w-full min-w-0 bg-transparent text-white font-medium px-4 py-2 outline-none placeholder:text-slate-600 cursor-text" />
+            <div className="absolute -inset-0.5 bg-linear-to-r from-orange-400 to-red-400 rounded-[2.2rem] blur-lg opacity-0 dark:opacity-10 group-focus-within:opacity-20 dark:group-focus-within:opacity-40 transition duration-500"></div>
+            <div className="relative bg-white dark:bg-[#0c0c10] border border-slate-200 dark:border-white/10 p-2.5 rounded-[2.2rem] flex items-center shadow-[0_8px_30px_#0000000d] dark:shadow-2xl transition-all focus-within:border-orange-500/40">
+              <div className="p-3 text-slate-400 group-focus-within:text-orange-500 transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              </div>
+              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search recipes..." className="flex-1 w-full min-w-0 bg-transparent text-slate-900 dark:text-white font-semibold px-2 py-2.5 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 cursor-text" />
             </div>
           </div>
           
-          {/* Sorting Dropdown */}
-          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="bg-[#0c0c10] border border-white/[0.08] text-white text-xs sm:text-sm font-bold rounded-[1.5rem] px-3 sm:px-4 outline-none cursor-pointer focus:border-orange-500/50 shrink-0">
-            <option value="Newest" className="bg-black">✨ Newest</option>
-            <option value="Quickest" className="bg-black">⚡ Quickest</option>
-            <option value="High Protein" className="bg-black">💪 Protein</option>
-          </select>
+          {/* 🚀 PREMIUM SORT DROPDOWN */}
+          <div className="relative shrink-0">
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="bg-white dark:bg-[#0c0c10] border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white text-xs sm:text-sm font-extrabold rounded-full pl-5 pr-10 py-4 h-full outline-none cursor-pointer focus:border-orange-500/50 shadow-[0_8px_30px_#0000000d] dark:shadow-2xl appearance-none outline-none [-webkit-tap-highlight-color:transparent]">
+              <option value="Newest" className="bg-white dark:bg-black text-slate-900 dark:text-white">✨ Newest</option>
+              <option value="Quickest" className="bg-white dark:bg-black text-slate-900 dark:text-white">⏱️ Quickest</option>
+              <option value="High Protein" className="bg-white dark:bg-black text-slate-900 dark:text-white">💪 High Protein</option>
+            </select>
+            {/* Custom Caret Icon for Select */}
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-slate-500">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </div>
+          </div>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2 snap-x">
+        {/* 🚀 HIDDEN SCROLLBAR: [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] */}
+        <div className="flex gap-3 overflow-x-auto pb-2.5 -mx-1 px-1 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           {["All", "Veg", "Non-Veg", "High Protein", "Quick Meal"].map((f) => (
-            <button key={f} onClick={() => setFilter(f as any)} className={`snap-start cursor-pointer whitespace-nowrap px-5 py-2.5 rounded-[1.2rem] text-xs font-bold transition-all border ${filter === f ? "bg-white text-black border-transparent shadow-[0_0_15px_rgba(255,255,255,0.2)]" : "bg-white/5 text-slate-400 border-white/10 hover:bg-white/10"}`}>
+            <button key={f} onClick={() => setFilter(f as any)} className={`snap-start cursor-pointer whitespace-nowrap px-5 py-3 rounded-full text-xs font-extrabold transition-all border outline-none [-webkit-tap-highlight-color:transparent] ${filter === f ? "bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-black dark:border-white shadow-[0_4px_15px_#00000026] dark:shadow-md scale-105" : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 dark:bg-[#0c0c10] dark:text-slate-300 dark:border-white/10 dark:hover:bg-white/5"}`}>
               {f === "Veg" && "🥬 "} {f === "Non-Veg" && "🥩 "} {f === "High Protein" && "💪 "} {f === "Quick Meal" && "⚡ "} {f}
             </button>
           ))}
@@ -323,67 +329,71 @@ export default function RecipesTab({ user }: RecipesTabProps) {
           <p className="font-bold">Loading your Cloud Recipes...</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 relative z-10 mt-6 px-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-10 sm:gap-7 relative z-10 mt-6 px-1">
           {filteredAndSortedRecipes.length === 0 ? (
-            <div className="col-span-full text-center py-10 text-slate-500 font-bold bg-white/5 rounded-[2rem] border border-white/10">
-              No recipes found. Add your first premium recipe! 👨‍🍳
+            <div className="col-span-full text-center py-16 border-2 border-dashed border-slate-300 dark:border-white/10 text-slate-500 font-bold bg-white dark:bg-white/[0.01] rounded-[2.5rem]">
+              <span className="text-5xl block mb-4">👨‍🍳</span>
+              No recipes found. Add your first premium recipe!
             </div>
           ) : (
             filteredAndSortedRecipes.map((recipe) => (
-              <div key={recipe.id} className="group bg-white/[0.02] hover:bg-white/[0.04] border border-white/10 p-2.5 rounded-[2rem] backdrop-blur-sm transition-all duration-300 hover:shadow-2xl flex flex-col">
+              <div key={recipe.id} className="mb-6 sm:mb-0 sm:bg-white sm:dark:bg-[#0b0b0e] sm:border sm:border-slate-200/80 sm:dark:border-white/10 sm:rounded-[2.5rem] sm:overflow-hidden sm:shadow-[0_8px_35px_#0000000d] sm:dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] group/card flex flex-col">
                 
-                {/* DEFAULT GRADIENT IF NO IMAGE */}
-                <div className={`w-full h-48 sm:h-52 rounded-[1.5rem] relative overflow-hidden flex items-center justify-center shadow-inner ${!recipe.imageUrl ? `bg-gradient-to-br ${recipe.gradient}` : 'bg-[#0b0b0e]'}`}>
+                {/* Image Area */}
+                <div className={`-mx-5 w-[calc(100%+40px)] sm:mx-0 sm:w-full h-[23rem] sm:h-64 relative flex items-center justify-center cursor-pointer sm:overflow-hidden ${!recipe.imageUrl ? `bg-linear-to-br ${recipe.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
                   {recipe.imageUrl ? (
                     <>
-                      <div className="absolute inset-0 bg-cover bg-center blur-xl opacity-40 group-hover:opacity-60 group-hover:scale-110 transition-all duration-700" style={{ backgroundImage: `url(${recipe.imageUrl})` }}></div>
-                      <img src={recipe.imageUrl} alt={recipe.name} className="relative z-10 w-full h-full object-contain group-hover:scale-105 transition-transform duration-700 p-1 rounded-[1.5rem]" />
+                      <div className="absolute inset-0 bg-cover bg-center blur-xl opacity-20 sm:group-hover/card:opacity-40 sm:group-hover/card:scale-110 transition-all duration-700" style={{ backgroundImage: `url(${recipe.imageUrl})` }}></div>
+                      <img src={recipe.imageUrl} alt={recipe.name} className="relative z-10 w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" />
                     </>
                   ) : (
-                    <span className="text-7xl drop-shadow-2xl group-hover:scale-110 transition-transform duration-500">{recipe.emoji}</span>
+                    <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{recipe.emoji}</span>
                   )}
                   
-                  {/* Macro Tags Overlay */}
-                  <div className="absolute bottom-3 left-3 flex gap-1.5 z-20">
-                    <span className="bg-black/80 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1"><span className="text-blue-400">P</span> {recipe.macros.protein}g</span>
-                    <span className="bg-black/80 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1"><span className="text-yellow-400">C</span> {recipe.macros.carbs}g</span>
+                  {/* Title Overlay */}
+                  <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/80 via-black/30 to-transparent p-5 pt-20 z-20">
+                    <div className="flex justify-between items-start gap-2 mb-2">
+                      <h3 className="text-white font-extrabold text-2xl leading-tight tracking-tight drop-shadow-lg">{recipe.name}</h3>
+                      <span className={`shrink-0 text-[10px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-lg border backdrop-blur-md ${recipe.type === 'Veg' ? 'bg-green-500/20 text-green-300 border-green-400/30' : 'bg-red-500/20 text-red-300 border-red-400/30'}`}>{recipe.type}</span>
+                    </div>
+                  </div>
+
+                  {/* Top Tags */}
+                  <div className="absolute top-4 left-4 flex gap-2 z-20">
+                    <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-blue-400">P</span> {recipe.macros.protein}g</span>
+                    <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-yellow-400">C</span> {recipe.macros.carbs}g</span>
                   </div>
 
                   {/* Top Right Action Buttons */}
-                  <div className="absolute top-3 right-3 flex flex-col gap-2 z-20">
-                    <button onClick={() => toggleLike(recipe.id)} className="cursor-pointer bg-black/50 backdrop-blur-md p-2 rounded-xl text-white hover:bg-black/80 transition-colors active:scale-95">
-                      <svg className={`w-5 h-5 ${recipe.isLiked ? 'fill-red-500 text-red-500' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                  <div className="absolute top-4 right-4 flex flex-col gap-2.5 z-20">
+                    <button onClick={() => toggleLike(recipe.id)} className="group cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-black/80 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
+                      <svg className={`w-5 h-5 transition-transform ${recipe.isLiked ? 'fill-red-500 text-red-500 scale-110 drop-shadow-[0_0_8px_#ef444466]' : 'group-hover:text-red-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
                     </button>
-                    <button onClick={() => handleShare(recipe.name)} className="cursor-pointer bg-black/50 backdrop-blur-md p-2 rounded-xl text-white hover:bg-green-500/80 transition-colors active:scale-95">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+                    <button onClick={() => handleShare(recipe.name)} className="cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-green-500 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
                     </button>
-                    <button onClick={() => handleDelete(recipe.id)} className="cursor-pointer bg-black/50 backdrop-blur-md p-2 rounded-xl text-white hover:bg-red-500/80 transition-colors active:scale-95">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    <button onClick={() => handleDelete(recipe.id)} className="cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-red-500 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </button>
                   </div>
                 </div>
 
-                <div className="p-3 pt-4 flex-1 flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-start gap-2 mb-2">
-                      <h3 className="text-white font-black text-xl leading-tight tracking-tight line-clamp-1">{recipe.name}</h3>
-                      <span className={`shrink-0 text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md border ${recipe.type === 'Veg' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>{recipe.type}</span>
+                {/* Details Section */}
+                <div className="py-5 px-0 sm:p-5 flex-1 flex flex-col justify-between bg-transparent">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-4 text-xs font-bold text-slate-500 dark:text-slate-400">
+                      <span className="flex items-center gap-1.5"><span className="text-base">⏱️</span> {recipe.time}</span>
+                      <span className="flex items-center gap-1.5 text-orange-500 dark:text-orange-400"><span className="text-base">🔥</span> {recipe.calories} cal</span>
                     </div>
-                    <div className="flex items-center justify-between mt-3">
-                      <div className="flex items-center gap-3 text-xs font-bold text-slate-400">
-                        <span className="flex items-center gap-1">⏱️ {recipe.time}</span>
-                        <span className="flex items-center gap-1 text-orange-400">🔥 {recipe.calories} cal</span>
-                      </div>
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${recipe.difficulty === 'Easy' ? 'bg-green-500/10 text-green-400' : recipe.difficulty === 'Medium' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'}`}>
-                        {recipe.difficulty}
-                      </span>
-                    </div>
+                    <span className={`text-[10px] font-extrabold px-3 py-1.5 rounded-full border ${recipe.difficulty === 'Easy' ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-transparent' : recipe.difficulty === 'Medium' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-transparent' : 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-transparent'}`}>
+                      {recipe.difficulty}
+                    </span>
                   </div>
-                  <button onClick={() => openCookMode(recipe)} className="cursor-pointer w-full mt-5 bg-white/5 hover:bg-orange-500 text-white font-black py-4 rounded-xl transition-all duration-300 flex justify-center items-center gap-2 group/btn border border-white/5 hover:border-orange-500 shadow-lg active:scale-95">
+                  
+                  <button onClick={() => openCookMode(recipe)} className="cursor-pointer w-full mt-6 bg-slate-900 dark:bg-white/5 hover:bg-slate-800 dark:hover:bg-orange-500 text-white font-extrabold py-4 rounded-xl transition-all duration-300 flex justify-center items-center gap-2.5 group/btn shadow-[0_4px_15px_#00000033] dark:shadow-none active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
                     <span>Start Cooking</span>
-                    <svg className="w-5 h-5 opacity-50 group-hover/btn:opacity-100 group-hover/btn:rotate-12 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.866 8.21 8.21 0 003 2.48z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" />
+                    <svg className="w-5 h-5 opacity-50 group-hover/btn:opacity-100 group-hover/btn:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
                     </svg>
                   </button>
                 </div>
@@ -394,129 +404,141 @@ export default function RecipesTab({ user }: RecipesTabProps) {
       )}
 
       {/* ========================================= */}
-      {/* 🚀 MODAL 1: ADVANCED PRO ADD RECIPE (Mobile Fixed) */}
+      {/* 🚀 MODAL 1: ADD RECIPE (Premium Form) */}
       {/* ========================================= */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-end sm:justify-center bg-black/80 backdrop-blur-md p-0 sm:p-4">
-          <div className="bg-[#0b0b0e] border border-white/10 w-full sm:max-w-xl h-[95vh] sm:h-auto sm:max-h-[90vh] flex flex-col rounded-t-[2.5rem] sm:rounded-[2.5rem] animate-in slide-in-from-bottom-10 duration-300 shadow-2xl overflow-hidden relative">
-            <div className="shrink-0 flex justify-between items-center px-6 py-5 border-b border-white/10 bg-[#0b0b0e] z-10 shadow-sm">
-              <h3 className="text-2xl font-black text-white">Create Recipe</h3>
-              <button disabled={isSaving} onClick={() => setIsAddModalOpen(false)} className="cursor-pointer text-slate-400 bg-white/5 hover:bg-white/10 hover:text-white w-9 h-9 rounded-full flex items-center justify-center disabled:opacity-50 transition-colors">✕</button>
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-end sm:justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-0 sm:p-4 transition-all">
+          <div className="bg-white dark:bg-[#0b0b0e] border border-slate-200 dark:border-white/10 w-full sm:max-w-xl h-[95vh] sm:h-auto sm:max-h-[90vh] flex flex-col rounded-t-[2.5rem] sm:rounded-[2.5rem] animate-in slide-in-from-bottom-10 duration-300 shadow-2xl overflow-hidden relative">
+            
+            <div className="shrink-0 flex justify-between items-center px-6 py-5 border-b border-slate-100 dark:border-white/10 bg-white dark:bg-[#0b0b0e] z-10 shadow-sm dark:shadow-none">
+              <h3 className="text-2xl font-black text-slate-900 dark:text-white">Create Recipe</h3>
+              <button disabled={isSaving} onClick={() => setIsAddModalOpen(false)} className="cursor-pointer text-slate-500 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 dark:text-white w-9 h-9 rounded-full flex items-center justify-center disabled:opacity-50 transition-colors outline-none [-webkit-tap-highlight-color:transparent]">✕</button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+            <div className="flex-1 overflow-y-auto p-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               <form onSubmit={handleAddRecipe} className="space-y-6 pb-20 sm:pb-0">
                 
-                {/* Image Upload Area */}
+                {/* 🚀 ADVANCED Image Upload Area */}
                 <div 
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   onClick={() => !imageFile && !isCompressing && fileInputRef.current?.click()}
-                  className={`relative w-full h-48 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center group overflow-hidden ${isDragging ? 'border-orange-500 bg-orange-500/10' : 'border-white/20 hover:border-orange-500/50 bg-[#07070a] cursor-pointer shadow-inner'}`}
+                  className={`relative w-full aspect-video sm:h-52 rounded-[2rem] border-2 border-dashed transition-all flex flex-col items-center justify-center group overflow-hidden outline-none [-webkit-tap-highlight-color:transparent] ${isDragging ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10' : 'border-slate-300 dark:border-white/20 hover:border-orange-500 bg-slate-50 dark:bg-[#0c0c10] cursor-pointer'}`}
                 >
                   <input type="file" accept="image/*" onChange={handleImageChange} ref={fileInputRef} disabled={isCompressing || isSaving} className="hidden" />
                   
                   {isCompressing ? (
                     <div className="flex flex-col items-center gap-3">
                       <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-                      <p className="text-orange-400 font-bold text-sm animate-pulse">Processing Image...</p>
+                      <p className="text-orange-500 font-bold text-sm animate-pulse">Processing Image...</p>
                     </div>
                   ) : imageFile ? (
                     <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-black/60">
                       <div className="absolute inset-0 bg-cover bg-center blur-xl opacity-60 scale-110" style={{ backgroundImage: `url(${imageFile})` }}></div>
                       <img src={imageFile} alt="Preview" className="relative z-10 w-full h-full object-contain drop-shadow-2xl p-1 rounded-xl" />
-                      
-                      <button type="button" onClick={(e) => { e.stopPropagation(); setImageFile(null); }} className="absolute top-2 right-2 bg-black/70 hover:bg-red-500 text-white w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-md transition-all shadow-lg z-20 cursor-pointer">✕</button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setImageFile(null); }} className="absolute top-3 right-3 bg-black/70 hover:bg-red-500 text-white w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-md transition-all shadow-lg z-20 cursor-pointer outline-none [-webkit-tap-highlight-color:transparent]">✕</button>
                     </div>
                   ) : (
                     <>
-                      <svg className={`w-12 h-12 mb-3 text-slate-400 transition-transform duration-300 ${isDragging ? 'scale-125 text-orange-400' : 'group-hover:-translate-y-2 group-hover:text-orange-400'}`} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                      {/* 🚀 Professional Camera Icon */}
+                      <svg className={`w-10 h-10 mb-3 text-slate-400 transition-transform duration-300 ${isDragging ? 'scale-125 text-orange-500' : 'group-hover:-translate-y-1 group-hover:text-orange-500'}`} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
                       </svg>
-                      <p className="text-white font-bold text-sm">{isDragging ? 'Drop Image Here!' : 'Tap or Drag Food Photo Here'}</p>
-                      <p className="text-slate-500 text-xs mt-1">JPEG, PNG • Aspect Ratio Preserved</p>
+                      <p className="text-slate-700 dark:text-white font-extrabold text-sm">{isDragging ? 'Drop Image Here!' : 'Upload Recipe Photo'}</p>
+                      <p className="text-slate-400 text-xs mt-1.5 font-medium">High quality images get more likes</p>
                     </>
                   )}
                 </div>
 
                 <div className="flex gap-3">
-                  <input type="text" placeholder="Recipe Name (e.g. Masala Dosa)" value={newName} onChange={(e) => setNewName(e.target.value)} disabled={isSaving} className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-white outline-none focus:border-orange-500 transition-all cursor-text disabled:opacity-50" required />
-                  <select value={newType} onChange={(e) => setNewType(e.target.value as any)} disabled={isSaving} className="w-32 bg-white/5 border border-white/10 rounded-2xl px-3 py-3.5 text-white outline-none focus:border-orange-500 appearance-none disabled:opacity-50 cursor-pointer">
-                    <option value="Veg" className="bg-[#0b0b0e]">🥬 Veg</option>
-                    <option value="Non-Veg" className="bg-[#0b0b0e]">🥩 Meat</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <input type="number" placeholder="Mins" value={newTime} onChange={(e) => setNewTime(e.target.value)} disabled={isSaving} className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-white outline-none focus:border-orange-500 transition-all placeholder:text-slate-500 cursor-text" />
-                  <input type="number" placeholder="Kcal" value={newCalories} onChange={(e) => setNewCalories(e.target.value)} disabled={isSaving} className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-white outline-none focus:border-orange-500 transition-all placeholder:text-slate-500 cursor-text" />
-                  <select value={newDifficulty} onChange={(e) => setNewDifficulty(e.target.value as any)} disabled={isSaving} className="w-full bg-white/5 border border-white/10 rounded-2xl px-2 py-3.5 text-white outline-none focus:border-orange-500 appearance-none text-sm cursor-pointer">
-                    <option value="Easy" className="bg-black">🟢 Easy</option>
-                    <option value="Medium" className="bg-black">🟡 Med</option>
-                    <option value="Hard" className="bg-black">🔴 Hard</option>
-                  </select>
-                </div>
-
-                <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
-                  <p className="text-slate-400 text-xs font-bold mb-3 uppercase tracking-wider">Macros (per serving)</p>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="flex items-center bg-black/40 rounded-xl px-2 sm:px-3 py-2 border border-white/5 focus-within:border-orange-500 transition-colors">
-                      <span className="text-blue-400 font-bold text-xs mr-2">P</span>
-                      <input type="number" placeholder="0" value={newProtein} onChange={(e) => setNewProtein(e.target.value)} className="w-full bg-transparent text-white outline-none text-sm placeholder:text-slate-600 cursor-text" />
-                      <span className="text-slate-500 text-xs">g</span>
-                    </div>
-                    <div className="flex items-center bg-black/40 rounded-xl px-2 sm:px-3 py-2 border border-white/5 focus-within:border-orange-500 transition-colors">
-                      <span className="text-yellow-400 font-bold text-xs mr-2">C</span>
-                      <input type="number" placeholder="0" value={newCarbs} onChange={(e) => setNewCarbs(e.target.value)} className="w-full bg-transparent text-white outline-none text-sm placeholder:text-slate-600 cursor-text" />
-                      <span className="text-slate-500 text-xs">g</span>
-                    </div>
-                    <div className="flex items-center bg-black/40 rounded-xl px-2 sm:px-3 py-2 border border-white/5 focus-within:border-orange-500 transition-colors">
-                      <span className="text-red-400 font-bold text-xs mr-2">F</span>
-                      <input type="number" placeholder="0" value={newFats} onChange={(e) => setNewFats(e.target.value)} className="w-full bg-transparent text-white outline-none text-sm placeholder:text-slate-600 cursor-text" />
-                      <span className="text-slate-500 text-xs">g</span>
+                  <input type="text" placeholder="Recipe Name" value={newName} onChange={(e) => setNewName(e.target.value)} disabled={isSaving} className="flex-1 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3.5 text-slate-900 dark:text-white outline-none focus:border-orange-500 transition-all cursor-text disabled:opacity-50 placeholder:text-slate-400" required />
+                  <div className="relative w-32 shrink-0">
+                    <select value={newType} onChange={(e) => setNewType(e.target.value as any)} disabled={isSaving} className="w-full h-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl pl-3 pr-8 py-3.5 text-slate-900 dark:text-white font-bold outline-none focus:border-orange-500 appearance-none disabled:opacity-50 cursor-pointer">
+                      <option value="Veg" className="bg-white dark:bg-[#0b0b0e]">🥬 Veg</option>
+                      <option value="Non-Veg" className="bg-white dark:bg-[#0b0b0e]">🥩 Meat</option>
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl space-y-3">
-                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Ingredients</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <input type="number" placeholder="Mins" value={newTime} onChange={(e) => setNewTime(e.target.value)} disabled={isSaving} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3.5 text-slate-900 dark:text-white outline-none focus:border-orange-500 transition-all placeholder:text-slate-400 cursor-text font-bold" />
+                  <input type="number" placeholder="Kcal" value={newCalories} onChange={(e) => setNewCalories(e.target.value)} disabled={isSaving} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-4 py-3.5 text-slate-900 dark:text-white outline-none focus:border-orange-500 transition-all placeholder:text-slate-400 cursor-text font-bold" />
+                  <div className="relative w-full">
+                    <select value={newDifficulty} onChange={(e) => setNewDifficulty(e.target.value as any)} disabled={isSaving} className="w-full h-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl pl-2 pr-6 py-3.5 text-slate-900 dark:text-white font-bold outline-none focus:border-orange-500 appearance-none text-sm cursor-pointer">
+                      <option value="Easy" className="bg-white dark:bg-black">🟢 Easy</option>
+                      <option value="Medium" className="bg-white dark:bg-black">🟡 Med</option>
+                      <option value="Hard" className="bg-white dark:bg-black">🔴 Hard</option>
+                    </select>
+                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-4 rounded-2xl">
+                  <p className="text-slate-500 dark:text-slate-400 text-xs font-bold mb-3 uppercase tracking-wider">Macros (per serving)</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="flex items-center bg-white dark:bg-black/40 rounded-xl px-2 sm:px-3 py-2 border border-slate-200 dark:border-white/5 focus-within:border-orange-500 transition-colors shadow-sm dark:shadow-none">
+                      <span className="text-blue-500 font-bold text-xs mr-2">P</span>
+                      <input type="number" placeholder="0" value={newProtein} onChange={(e) => setNewProtein(e.target.value)} className="w-full bg-transparent text-slate-900 dark:text-white font-bold outline-none text-sm placeholder:text-slate-400 cursor-text" />
+                      <span className="text-slate-400 text-xs font-bold">g</span>
+                    </div>
+                    <div className="flex items-center bg-white dark:bg-black/40 rounded-xl px-2 sm:px-3 py-2 border border-slate-200 dark:border-white/5 focus-within:border-orange-500 transition-colors shadow-sm dark:shadow-none">
+                      <span className="text-yellow-500 font-bold text-xs mr-2">C</span>
+                      <input type="number" placeholder="0" value={newCarbs} onChange={(e) => setNewCarbs(e.target.value)} className="w-full bg-transparent text-slate-900 dark:text-white font-bold outline-none text-sm placeholder:text-slate-400 cursor-text" />
+                      <span className="text-slate-400 text-xs font-bold">g</span>
+                    </div>
+                    <div className="flex items-center bg-white dark:bg-black/40 rounded-xl px-2 sm:px-3 py-2 border border-slate-200 dark:border-white/5 focus-within:border-orange-500 transition-colors shadow-sm dark:shadow-none">
+                      <span className="text-red-500 font-bold text-xs mr-2">F</span>
+                      <input type="number" placeholder="0" value={newFats} onChange={(e) => setNewFats(e.target.value)} className="w-full bg-transparent text-slate-900 dark:text-white font-bold outline-none text-sm placeholder:text-slate-400 cursor-text" />
+                      <span className="text-slate-400 text-xs font-bold">g</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-4 rounded-2xl space-y-3">
+                  <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Ingredients</p>
                   {newIngredients.map((ing, idx) => (
                     <div key={`ing-${idx}`} className="flex gap-2 items-center">
-                      <div className="w-5 text-center text-xs font-bold text-slate-500">{idx + 1}.</div>
-                      <input type="text" placeholder="e.g. 2 Chopped Onions" value={ing} onChange={(e) => handleIngredientChange(idx, e.target.value)} disabled={isSaving} className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white outline-none focus:border-orange-500 transition-all text-sm cursor-text" required />
+                      <div className="w-5 text-center text-xs font-bold text-slate-400">{idx + 1}.</div>
+                      <input type="text" placeholder="e.g. 2 Chopped Onions" value={ing} onChange={(e) => handleIngredientChange(idx, e.target.value)} disabled={isSaving} className="flex-1 bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-medium outline-none focus:border-orange-500 transition-all text-sm cursor-text shadow-sm dark:shadow-none" required />
                       {newIngredients.length > 1 && (
-                        <button type="button" onClick={() => removeIngredientField(idx)} className="text-slate-500 hover:text-red-500 p-2 transition-colors cursor-pointer active:scale-95">
+                        <button type="button" onClick={() => removeIngredientField(idx)} className="text-slate-400 hover:text-red-500 p-2 transition-colors cursor-pointer active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                         </button>
                       )}
                     </div>
                   ))}
-                  <button type="button" onClick={addIngredientField} className="cursor-pointer text-orange-400 hover:text-orange-300 text-sm font-bold flex items-center gap-1 mt-2 ml-7 transition-colors active:scale-95">
+                  <button type="button" onClick={addIngredientField} className="cursor-pointer text-orange-500 font-bold text-sm flex items-center gap-1 mt-2 ml-7 hover:underline outline-none [-webkit-tap-highlight-color:transparent]">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg> Add Ingredient
                   </button>
                 </div>
 
-                <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl space-y-3">
-                  <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Cooking Steps</p>
+                <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-4 rounded-2xl space-y-3">
+                  <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Cooking Steps</p>
                   {newSteps.map((step, idx) => (
                     <div key={`step-${idx}`} className="flex gap-2 items-start">
-                      <div className="w-5 pt-3 text-center text-xs font-bold text-slate-500">{idx + 1}.</div>
-                      <textarea placeholder="e.g. Heat oil in a pan..." value={step} onChange={(e) => handleStepChange(idx, e.target.value)} disabled={isSaving} rows={2} className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white outline-none focus:border-orange-500 transition-all text-sm resize-none cursor-text" required></textarea>
+                      <div className="w-5 pt-3 text-center text-xs font-bold text-slate-400">{idx + 1}.</div>
+                      <textarea placeholder="e.g. Heat oil in a pan..." value={step} onChange={(e) => handleStepChange(idx, e.target.value)} disabled={isSaving} rows={2} className="flex-1 bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-white font-medium outline-none focus:border-orange-500 transition-all text-sm resize-none cursor-text shadow-sm dark:shadow-none" required></textarea>
                       {newSteps.length > 1 && (
-                        <button type="button" onClick={() => removeStepField(idx)} className="text-slate-500 hover:text-red-500 p-2 mt-1 transition-colors cursor-pointer active:scale-95">
+                        <button type="button" onClick={() => removeStepField(idx)} className="text-slate-400 hover:text-red-500 p-2 mt-1 transition-colors cursor-pointer active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                         </button>
                       )}
                     </div>
                   ))}
-                  <button type="button" onClick={addStepField} className="cursor-pointer text-orange-400 hover:text-orange-300 text-sm font-bold flex items-center gap-1 mt-2 ml-7 transition-colors active:scale-95">
+                  <button type="button" onClick={addStepField} className="cursor-pointer text-orange-500 font-bold text-sm flex items-center gap-1 mt-2 ml-7 hover:underline outline-none [-webkit-tap-highlight-color:transparent]">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg> Add Step
                   </button>
                 </div>
                 
                 <div className="pt-2">
-                  <button type="submit" disabled={isSaving || isCompressing} className="cursor-pointer w-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-black py-4 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(249,115,22,0.3)] flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                  <button type="submit" disabled={isSaving || isCompressing} className="cursor-pointer w-full bg-linear-to-r from-orange-500 to-red-500 text-white font-black py-4 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_8px_20px_#f973164d] flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed outline-none [-webkit-tap-highlight-color:transparent]">
                     {isSaving ? (
                       <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Uploading Magic...</>
                     ) : "Save to Cloud"}
@@ -529,44 +551,44 @@ export default function RecipesTab({ user }: RecipesTabProps) {
       )}
 
       {/* ========================================= */}
-      {/* 🔥 MODAL 2: INTERACTIVE COOK MODE UX */}
+      {/* 🔥 MODAL 2: COOK MODE UX (Premium UI) */}
       {/* ========================================= */}
       {cookModeRecipe && (
-        <div className="fixed inset-0 z-[100] flex flex-col bg-[#0b0b0e] sm:p-4">
-          <div className="w-full h-full max-w-2xl mx-auto sm:border sm:border-white/10 sm:rounded-[2.5rem] flex flex-col bg-[#07070a] shadow-2xl relative overflow-hidden animate-in slide-in-from-bottom-full duration-500">
+        <div className="fixed inset-0 z-[100] flex flex-col bg-slate-50 dark:bg-[#0b0b0e] sm:p-4">
+          <div className="w-full h-full max-w-2xl mx-auto sm:border border-slate-200 dark:border-white/10 sm:rounded-[2.5rem] flex flex-col bg-white dark:bg-[#07070a] shadow-2xl relative overflow-hidden animate-in slide-in-from-bottom-full duration-500">
             
-            <div className="shrink-0 pt-12 pb-4 px-6 bg-white/[0.02] border-b border-white/5 relative z-20">
-              <button onClick={() => setCookModeRecipe(null)} className="absolute top-6 right-6 cursor-pointer bg-white/10 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/20 transition-colors">✕</button>
-              <h3 className="text-xl font-black text-white mb-4 pr-10">{cookModeRecipe.name}</h3>
+            <div className="shrink-0 pt-12 pb-4 px-6 bg-slate-50 dark:bg-white/[0.02] border-b border-slate-200 dark:border-white/5 relative z-20">
+              <button onClick={() => setCookModeRecipe(null)} className="absolute top-6 right-6 cursor-pointer bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-white w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-300 dark:hover:bg-white/20 transition-colors outline-none [-webkit-tap-highlight-color:transparent]">✕</button>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white mb-4 pr-10">{cookModeRecipe.name}</h3>
               
               <div className="flex gap-1 mb-2">
-                <div className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${currentStep === -1 ? 'bg-orange-500' : 'bg-white/10'}`}></div>
+                <div className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${currentStep === -1 ? 'bg-orange-500' : 'bg-slate-200 dark:bg-white/10'}`}></div>
                 {cookModeRecipe.steps.map((_, idx) => (
-                  <div key={idx} className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${currentStep >= idx ? 'bg-orange-500' : 'bg-white/10'}`}></div>
+                  <div key={idx} className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${currentStep >= idx ? 'bg-orange-500' : 'bg-slate-200 dark:bg-white/10'}`}></div>
                 ))}
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 py-8">
+            <div className="flex-1 overflow-y-auto px-6 py-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               {currentStep === -1 && (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-8">
-                  <div className="bg-gradient-to-r from-orange-500/10 to-red-500/5 border border-orange-500/20 p-5 rounded-[2rem] flex justify-between items-center">
+                  <div className="bg-linear-to-r from-orange-50 to-red-50 dark:from-orange-500/10 dark:to-red-500/5 border border-orange-200 dark:border-orange-500/20 p-5 rounded-[2rem] flex justify-between items-center">
                     <div>
-                      <span className="text-orange-400 font-bold text-sm block">Serving Size</span>
+                      <span className="text-orange-600 dark:text-orange-400 font-bold text-sm block">Serving Size</span>
                     </div>
-                    <div className="flex items-center gap-4 bg-black/40 p-1.5 rounded-xl border border-white/5">
-                      <button onClick={() => setPortions(Math.max(1, portions - 1))} className="cursor-pointer w-10 h-10 rounded-lg bg-white/5 hover:bg-white/10 text-white font-black text-lg active:scale-95 transition-transform">-</button>
-                      <span className="font-black text-white w-6 text-center text-lg">{portions}</span>
-                      <button onClick={() => setPortions(portions + 1)} className="cursor-pointer w-10 h-10 rounded-lg bg-white/5 hover:bg-white/10 text-white font-black text-lg active:scale-95 transition-transform">+</button>
+                    <div className="flex items-center gap-4 bg-white dark:bg-black/40 p-1.5 rounded-xl border border-orange-100 dark:border-white/5 shadow-sm dark:shadow-none">
+                      <button onClick={() => setPortions(Math.max(1, portions - 1))} className="cursor-pointer w-10 h-10 rounded-lg bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-900 dark:text-white font-black text-lg active:scale-95 transition-transform outline-none [-webkit-tap-highlight-color:transparent]">-</button>
+                      <span className="font-black text-slate-900 dark:text-white w-6 text-center text-lg">{portions}</span>
+                      <button onClick={() => setPortions(portions + 1)} className="cursor-pointer w-10 h-10 rounded-lg bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-900 dark:text-white font-black text-lg active:scale-95 transition-transform outline-none [-webkit-tap-highlight-color:transparent]">+</button>
                     </div>
                   </div>
 
                   <div>
-                    <h4 className="text-white font-black text-lg mb-4">Ingredients</h4>
+                    <h4 className="text-slate-900 dark:text-white font-black text-lg mb-4">Ingredients</h4>
                     <ul className="grid grid-cols-1 gap-3">
                       {cookModeRecipe.ingredients.map((ing, i) => (
-                        <li key={i} className="flex items-center gap-4 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
-                          <span className="text-white font-medium">{ing} <span className="text-orange-400 font-bold ml-1">(x{portions})</span></span>
+                        <li key={i} className="flex items-center gap-4 bg-slate-50 dark:bg-white/[0.02] p-4 rounded-2xl border border-slate-200 dark:border-white/5">
+                          <span className="text-slate-700 dark:text-white font-medium">{ing} <span className="text-orange-500 dark:text-orange-400 font-bold ml-1">(x{portions})</span></span>
                         </li>
                       ))}
                     </ul>
@@ -576,19 +598,19 @@ export default function RecipesTab({ user }: RecipesTabProps) {
 
               {currentStep >= 0 && (
                 <div className="flex flex-col items-center justify-center h-full text-center space-y-8 animate-in zoom-in-95 duration-500">
-                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-4xl font-black text-white shadow-[0_0_30px_rgba(249,115,22,0.4)]">{currentStep + 1}</div>
-                  <h2 className="text-2xl sm:text-3xl font-medium text-white px-4 leading-relaxed">{cookModeRecipe.steps[currentStep]}</h2>
+                  <div className="w-24 h-24 rounded-full bg-linear-to-br from-orange-400 to-red-500 flex items-center justify-center text-4xl font-black text-white shadow-[0_8px_30px_#f9731666]">{currentStep + 1}</div>
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-white px-4 leading-relaxed">{cookModeRecipe.steps[currentStep]}</h2>
                 </div>
               )}
             </div>
 
-            <div className="shrink-0 p-6 bg-gradient-to-t from-[#07070a] to-transparent relative z-20">
+            <div className="shrink-0 p-6 bg-linear-to-t from-white dark:from-[#07070a] to-transparent relative z-20">
               {currentStep === -1 ? (
-                <button onClick={() => setCurrentStep(0)} className="cursor-pointer w-full bg-white text-black font-black text-lg py-5 rounded-[1.5rem] hover:scale-[1.02] active:scale-[0.98] transition-all">Let's Start Cooking</button>
+                <button onClick={() => setCurrentStep(0)} className="cursor-pointer w-full bg-slate-900 dark:bg-white text-white dark:text-black font-black text-lg py-5 rounded-[1.5rem] hover:scale-[1.02] active:scale-[0.98] transition-all outline-none [-webkit-tap-highlight-color:transparent] shadow-lg">Let's Start Cooking</button>
               ) : (
                 <div className="flex gap-4">
-                  <button onClick={() => setCurrentStep(currentStep - 1)} className="cursor-pointer w-1/3 bg-white/10 hover:bg-white/20 text-white font-bold py-5 rounded-[1.5rem] transition-colors active:scale-95">Back</button>
-                  <button onClick={() => { if (currentStep < cookModeRecipe.steps.length - 1) setCurrentStep(currentStep + 1); else setCookModeRecipe(null); }} className={`cursor-pointer w-2/3 text-white font-black py-5 rounded-[1.5rem] hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg ${currentStep === cookModeRecipe.steps.length - 1 ? 'bg-green-500 hover:bg-green-400 shadow-green-500/30' : 'bg-orange-500 hover:bg-orange-400 shadow-orange-500/30'}`}>
+                  <button onClick={() => setCurrentStep(currentStep - 1)} className="cursor-pointer w-1/3 bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 text-slate-700 dark:text-white font-bold py-5 rounded-[1.5rem] transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">Back</button>
+                  <button onClick={() => { if (currentStep < cookModeRecipe.steps.length - 1) setCurrentStep(currentStep + 1); else setCookModeRecipe(null); }} className={`cursor-pointer w-2/3 text-white font-black py-5 rounded-[1.5rem] hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg outline-none [-webkit-tap-highlight-color:transparent] ${currentStep === cookModeRecipe.steps.length - 1 ? 'bg-green-500 hover:bg-green-600 shadow-[0_8px_20px_#22c55e66]' : 'bg-orange-500 hover:bg-orange-600 shadow-[0_8px_20px_#f9731666]'}`}>
                     {currentStep === cookModeRecipe.steps.length - 1 ? "Finish Meal 🍽️" : "Next Step"}
                   </button>
                 </div>
