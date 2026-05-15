@@ -83,7 +83,8 @@ export default function HomePage() {
       <div className="fixed top-[-10%] right-[-5%] w-80 h-80 bg-orange-600/10 rounded-full blur-[100px] pointer-events-none z-0"></div>
 
       {/* --- HEADER --- */}
-      <header className="sticky top-0 z-50 bg-white/85 dark:bg-[#07070a]/85 backdrop-blur-xl border-b border-black/5 dark:border-white/5 px-5 py-3 flex justify-between items-center transition-colors duration-300 shadow-sm dark:shadow-none">
+      {/* Wapas pehle jaisa edge-to-edge kar diya hai */}
+      <header className="sticky top-0 z-40 bg-white/85 dark:bg-[#07070a]/85 backdrop-blur-xl border-b border-slate-200 dark:border-white/5 px-5 py-3 flex justify-between items-center transition-colors duration-300 shadow-sm dark:shadow-none">
         
         <div className="text-2xl font-black bg-clip-text text-transparent bg-linear-to-r from-orange-500 to-red-500 tracking-tighter cursor-pointer" onClick={() => handleTabClick("explore")}>
           Zestly<span className="text-slate-400 dark:text-white text-sm ml-1 opacity-50">Pro</span>
@@ -106,32 +107,16 @@ export default function HomePage() {
           )}
 
           {mounted && (
-            /* 🚀 PRO FEATURE: Animated Dark/Light Mode Toggle */
             <button 
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               className="relative w-10 h-10 flex items-center justify-center bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 rounded-full cursor-pointer active:scale-90 border border-slate-200 dark:border-white/10 shadow-sm dark:shadow-none outline-none [-webkit-tap-highlight-color:transparent] overflow-hidden group transition-all duration-300"
               title="Toggle Theme"
             >
-              {/* 🌞 SUN ICON: Dikhega jab mode Dark ho (Light pe jaane ke liye). Ghoomta rahega. */}
-              <div 
-                className={`absolute inset-0 flex items-center justify-center transition-all duration-700 ease-in-out transform ${
-                  theme === "dark" ? "opacity-100 rotate-0 scale-100" : "opacity-0 rotate-90 scale-50"
-                }`}
-              >
-                <svg className="w-5 h-5 text-yellow-400 animate-[spin_8s_linear_infinite]" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
+              <div className={`absolute inset-0 flex items-center justify-center transition-all duration-700 ease-in-out transform ${theme === "dark" ? "opacity-100 rotate-0 scale-100" : "opacity-0 rotate-90 scale-50"}`}>
+                <svg className="w-5 h-5 text-yellow-400 animate-[spin_8s_linear_infinite]" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
               </div>
-
-              {/* 🌙 MOON ICON: Dikhega jab mode Light ho (Dark pe jaane ke liye). Pulse karta rahega. */}
-              <div 
-                className={`absolute inset-0 flex items-center justify-center transition-all duration-700 ease-in-out transform ${
-                  theme === "light" ? "opacity-100 rotate-0 scale-100" : "opacity-0 -rotate-90 scale-50"
-                }`}
-              >
-                <svg className="w-5 h-5 text-indigo-500 animate-pulse" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
+              <div className={`absolute inset-0 flex items-center justify-center transition-all duration-700 ease-in-out transform ${theme === "light" ? "opacity-100 rotate-0 scale-100" : "opacity-0 -rotate-90 scale-50"}`}>
+                <svg className="w-5 h-5 text-indigo-500 animate-pulse" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
               </div>
             </button>
           )}
@@ -139,12 +124,14 @@ export default function HomePage() {
       </header>
 
       {/* --- MAIN CONTENT --- */}
-      <main className="flex-1 pb-[76px] overflow-y-auto relative z-10">
+      {/* 🚀 FIXED: Mobile pe wahi 0 gap rahega, Laptop pe thoda sa side gap aayega (sm:px-8 lg:px-16) taaki cards kinaroo se na chipke */}
+      <main className="flex-1 pb-[76px] overflow-y-auto relative z-10 px-0 sm:px-8 lg:px-16 xl:px-32">
         {renderTabContent()}
       </main>
 
       {/* --- BOTTOM NAVBAR --- */}
-      <nav className="fixed bottom-0 left-0 w-full bg-white/95 dark:bg-[#0b0b0e]/95 backdrop-blur-2xl border-t border-slate-200 dark:border-white/5 z-50 transition-colors duration-300 shadow-[0_-10px_30px_#00000008] dark:shadow-none pb-[env(safe-area-inset-bottom)]">
+      {/* 🚀 FIXED: Navbar wapas edge-to-edge stretch kar di gayi hai, just like Instagram/Twitter mobile app */}
+      <nav className="fixed bottom-0 left-0 w-full bg-white/95 dark:bg-[#0b0b0e]/95 backdrop-blur-2xl border-t border-slate-200 dark:border-white/5 z-40 transition-colors duration-300 shadow-[0_-10px_30px_#00000008] dark:shadow-none pb-[env(safe-area-inset-bottom)]">
         <div className="flex justify-around items-center h-[60px] px-2">
           
           <button onClick={() => handleTabClick("explore")} className={`cursor-pointer flex flex-col items-center justify-center w-16 transition-all duration-300 outline-none [-webkit-tap-highlight-color:transparent] ${activeTab === "explore" ? "text-orange-500 scale-110 drop-shadow-[0_4px_10px_#f9731666] dark:drop-shadow-[0_4px_10px_#f9731680]" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}>
