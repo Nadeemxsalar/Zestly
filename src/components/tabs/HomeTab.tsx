@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom"; // 🔥 NAYA: Popups ko navbar ke upar laane ke liye
 
 interface HomeTabProps {
   user: any;
@@ -43,7 +44,7 @@ export default function HomeTab({ user }: HomeTabProps) {
   // Instagram Style Comment Modal State
   const [activeCommentsPost, setActiveCommentsPost] = useState<FeedPost | null>(null);
   const [commentInput, setCommentInput] = useState("");
-  const [isSubmittingComment, setIsSubmittingComment] = useState(false); // 🚀 NAYA: Loading tracker for comments
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
   // Cook Mode States
   const [cookModePost, setCookModePost] = useState<FeedPost | null>(null);
@@ -53,6 +54,9 @@ export default function HomeTab({ user }: HomeTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCuisine, setActiveCuisine] = useState<string>("All"); 
   const router = useRouter();
+
+  // 🔥 NAYA: Portal mount check (Taki hydration error na aaye)
+  const [mounted, setMounted] = useState(false);
 
   const cuisinesList = [
     { name: "All", icon: "🌍" },
@@ -64,6 +68,7 @@ export default function HomeTab({ user }: HomeTabProps) {
   ];
 
   useEffect(() => {
+    setMounted(true); // Mount set kiya portal ke liye
     fetchFeed();
   }, []);
 
@@ -143,13 +148,12 @@ export default function HomeTab({ user }: HomeTabProps) {
     setActiveCommentsPost(post);
   };
 
-  // 🚀 FIXED: Network call ke doran loading state dikhane ka logic add kiya
   const submitComment = async () => {
     if (!checkAuth() || !activeCommentsPost) return;
     const text = commentInput.trim();
     if (!text) return;
 
-    setIsSubmittingComment(true); // Loading Start
+    setIsSubmittingComment(true); 
 
     const currentUserName = user?.user_metadata?.full_name?.split(" ")[0] || "Chef";
     const newComment = { author: currentUserName, text: text };
@@ -161,12 +165,10 @@ export default function HomeTab({ user }: HomeTabProps) {
       commentsList: newCommentsList
     };
 
-    // Database mein save karein
     const { error } = await supabase.from("recipes").update({ 
       comments_data: newCommentsList 
     }).eq("id", activeCommentsPost.id);
 
-    // Error na ho toh UI update kardo aur message dikha do
     if (!error) {
       setPosts(posts.map(p => p.id === activeCommentsPost.id ? updatedPost : p));
       setActiveCommentsPost(updatedPost);
@@ -176,7 +178,7 @@ export default function HomeTab({ user }: HomeTabProps) {
       showAlert("Failed to post comment. Try again!");
     }
 
-    setIsSubmittingComment(false); // Loading Stop
+    setIsSubmittingComment(false); 
   };
 
   const openCookMode = (post: FeedPost) => {
@@ -399,10 +401,10 @@ export default function HomeTab({ user }: HomeTabProps) {
       </div>
 
       {/* ========================================= */}
-      {/* 🚀 MODAL 1: INSTAGRAM STYLE COMMENTS */}
+      {/* 🚀 PORTAL MODAL 1: INSTAGRAM STYLE COMMENTS */}
       {/* ========================================= */}
-      {activeCommentsPost && (
-        <div className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/60 dark:bg-black/80 backdrop-blur-sm sm:items-center sm:justify-center p-0 sm:p-4 transition-all">
+      {mounted && activeCommentsPost && createPortal(
+        <div className="fixed inset-0 z-[99999] flex flex-col justify-end bg-black/60 dark:bg-black/80 backdrop-blur-sm sm:items-center sm:justify-center p-0 sm:p-4 transition-all">
           <div className="bg-white dark:bg-[#0b0b0e] border border-slate-200 dark:border-white/10 w-full sm:w-[500px] h-[85vh] sm:h-[650px] rounded-t-[2.5rem] sm:rounded-[2.5rem] flex flex-col overflow-hidden animate-in slide-in-from-bottom-full duration-300 shadow-2xl">
             
             <div className="shrink-0 flex justify-between items-center px-6 py-5 border-b border-slate-100 dark:border-white/10 bg-white dark:bg-[#0b0b0e] z-10 shadow-sm dark:shadow-none">
@@ -443,7 +445,6 @@ export default function HomeTab({ user }: HomeTabProps) {
                   className="flex-1 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-full px-5 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 cursor-text transition-colors font-medium disabled:opacity-50"
                 />
                 
-                {/* 🚀 FIXED: Loading Spinner for Send Button */}
                 <button 
                   onClick={submitComment}
                   disabled={!commentInput.trim() || isSubmittingComment}
@@ -457,14 +458,15 @@ export default function HomeTab({ user }: HomeTabProps) {
                 </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================= */}
-      {/* 🔥 MODAL 2: WORKING COOK MODE UX */}
+      {/* 🔥 PORTAL MODAL 2: WORKING COOK MODE UX */}
       {/* ========================================= */}
-      {cookModePost && (
-        <div className="fixed inset-0 z-[100] flex flex-col bg-slate-50 dark:bg-[#0b0b0e] sm:p-4 transition-all">
+      {mounted && cookModePost && createPortal(
+        <div className="fixed inset-0 z-[99999] flex flex-col bg-slate-50 dark:bg-[#0b0b0e] sm:p-4 transition-all">
           <div className="w-full h-full max-w-2xl mx-auto sm:border border-slate-200 dark:border-white/10 sm:rounded-[2.5rem] flex flex-col bg-white dark:bg-[#07070a] shadow-2xl relative overflow-hidden animate-in slide-in-from-bottom-full duration-500">
             
             <div className="shrink-0 pt-12 pb-4 px-6 bg-slate-50 dark:bg-white/[0.02] border-b border-slate-200 dark:border-white/5 relative z-20">
@@ -527,14 +529,15 @@ export default function HomeTab({ user }: HomeTabProps) {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================= */}
-      {/* 🚀 MODAL 3: CUSTOM LOGIN ALERT POPUP */}
+      {/* 🚀 PORTAL MODAL 3: CUSTOM LOGIN ALERT POPUP */}
       {/* ========================================= */}
-      {alertModal.isOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+      {mounted && alertModal.isOpen && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-white dark:bg-[#0b0b0e] border border-slate-200 dark:border-white/10 w-full max-w-sm rounded-[2rem] p-6 text-center shadow-2xl animate-in zoom-in-95">
             <div className="w-16 h-16 bg-red-100 dark:bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
               🔒
@@ -543,18 +546,20 @@ export default function HomeTab({ user }: HomeTabProps) {
             <p className="text-slate-500 dark:text-slate-400 font-medium text-sm mb-6">{alertModal.message}</p>
             <button onClick={() => setAlertModal({ isOpen: false, message: "" })} className="w-full bg-slate-900 dark:bg-white text-white dark:text-black font-extrabold py-3.5 rounded-xl active:scale-95 transition-transform cursor-pointer">Got it</button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================= */}
-      {/* 🚀 MODAL 4: ANIMATED TOAST NOTIFICATION */}
+      {/* 🚀 PORTAL MODAL 4: ANIMATED TOAST NOTIFICATION */}
       {/* ========================================= */}
-      {toast.isOpen && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[200] animate-in slide-in-from-top-5 fade-out duration-300 pointer-events-none">
+      {mounted && toast.isOpen && createPortal(
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[99999] animate-in slide-in-from-top-5 fade-out duration-300 pointer-events-none">
           <div className="bg-slate-900 dark:bg-white text-white dark:text-black px-6 py-3.5 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.2)] text-sm font-bold flex items-center gap-2 border border-slate-700 dark:border-slate-200">
             <span>{toast.message}</span>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
