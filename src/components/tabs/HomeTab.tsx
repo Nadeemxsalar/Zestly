@@ -22,6 +22,7 @@ interface FeedPost {
   is_liked: boolean;
   imageUrl?: string;
   authorName: string;
+  authorId?: string;
   likesCount: number;
   commentsCount: number;
   cuisine: string;
@@ -35,6 +36,7 @@ interface FeedPost {
 
 export default function HomeTab({ user }: HomeTabProps) {
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [trendingChefs, setTrendingChefs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const [alertModal, setAlertModal] = useState({ isOpen: false, message: "" });
@@ -49,9 +51,16 @@ export default function HomeTab({ user }: HomeTabProps) {
   const [currentStep, setCurrentStep] = useState(-1);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchMode, setSearchMode] = useState<"recipes" | "chefs">("recipes");
+  const [isSearchActive, setIsSearchActive] = useState(false); 
+  const [searchedChefs, setSearchedChefs] = useState<any[]>([]);
+  
+  const [viewingChef, setViewingChef] = useState<any | null>(null);
+  const [viewingChefRecipes, setViewingChefRecipes] = useState<FeedPost[]>([]);
+  const [isFollowingChef, setIsFollowingChef] = useState(false);
+
   const [activeCuisine, setActiveCuisine] = useState<string>("All"); 
   const router = useRouter();
-
   const [mounted, setMounted] = useState(false);
 
   const cuisinesList = [
@@ -65,17 +74,63 @@ export default function HomeTab({ user }: HomeTabProps) {
 
   useEffect(() => {
     setMounted(true);
-    fetchFeed();
-  }, []);
+    syncMyProfile();
+    fetchFeedAndChefs();
+  }, [user]);
 
-  const fetchFeed = async () => {
-    const { data, error } = await supabase
+  useEffect(() => {
+    const fetchSearchedChefs = async () => {
+      if (searchMode === "chefs" && searchQuery.trim().length > 0) {
+        const { data } = await supabase
+          .from("profiles")
+          .select("*")
+          .ilike("full_name", `%${searchQuery}%`)
+          .limit(20);
+        if (data) setSearchedChefs(data);
+      } else {
+        setSearchedChefs([]);
+      }
+    };
+    
+    const delayDebounceFn = setTimeout(() => {
+      fetchSearchedChefs();
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery, searchMode]);
+
+  // 🚀 UPDATED: Zestly as Default Fallback 
+  const syncMyProfile = async () => {
+    if (!user) return;
+    
+    const { data } = await supabase.from("profiles").select("id, username").eq("id", user.id).single();
+    
+    if (!data) {
+      // Name Fallback
+      const rawName = user.user_metadata?.full_name || "Chef Zestly";
+      
+      // Username Fallback (Email or 'zestly')
+      const baseUsername = user.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') : "zestly";
+      const randomDigits = Math.floor(1000 + Math.random() * 9000);
+      const finalUsername = user.user_metadata?.username || `${baseUsername}_${randomDigits}`;
+
+      await supabase.from("profiles").insert({
+        id: user.id,
+        full_name: rawName,
+        username: finalUsername, 
+        bio: "Passionate Chef at Zestly 🍳"
+      });
+    }
+  };
+
+  const fetchFeedAndChefs = async () => {
+    const { data: recipesData, error } = await supabase
       .from("recipes")
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (!error && data) {
-      const formattedPosts: FeedPost[] = data.map((item, index) => {
+    if (!error && recipesData) {
+      const formattedPosts: FeedPost[] = recipesData.map((item, index) => {
         const mockCuisines = ["Indian", "Italian", "Mexican", "Chinese", "Desserts"];
         const assignedCuisine = mockCuisines[index % mockCuisines.length];
 
@@ -87,7 +142,8 @@ export default function HomeTab({ user }: HomeTabProps) {
           gradient: item.gradient || "from-orange-500 to-red-600",
           is_liked: item.is_liked || false,
           imageUrl: item.image_url,
-          authorName: item.author_name || "Chef Nadeem", 
+          authorName: item.author_name || "Chef Zestly", // 🔥 Changed Fallback
+          authorId: item.author_id || item.user_id,
           likesCount: item.is_liked ? 246 : Math.floor(Math.random() * 100) + 10,
           commentsList: item.comments_data || [], 
           commentsCount: item.comments_data ? item.comments_data.length : (Math.floor(Math.random() * 20) + 5),
@@ -101,6 +157,16 @@ export default function HomeTab({ user }: HomeTabProps) {
       });
       setPosts(formattedPosts);
     }
+
+    const { data: profilesData } = await supabase.from("profiles").select("*").limit(10);
+    if (profilesData && profilesData.length > 0) {
+      setTrendingChefs(profilesData);
+    } else {
+      setTrendingChefs([
+        { id: "mock1", full_name: "Chef Zestly", followers: 12500 }, // 🔥 Changed Fallback
+        { id: "mock2", full_name: "Chef Rahul", followers: 9800 }
+      ]);
+    }
     setIsLoading(false);
   };
 
@@ -112,22 +178,68 @@ export default function HomeTab({ user }: HomeTabProps) {
 
   const checkAuth = () => {
     if (!user) {
-      showAlert("Chef, you need to log in to interact with recipes! 👨‍🍳");
+      showAlert("Chef, you need to log in to interact! 👨‍🍳");
       setTimeout(() => router.push("/login"), 1500); 
       return false;
     }
     return true;
   };
 
+  const openChefProfile = async (chefId: string, fallbackName: string) => {
+    if (!checkAuth()) return;
+    if (chefId.startsWith("mock")) {
+      showToast("This is a demo profile! Create real recipes to see real profiles. ✨");
+      return;
+    }
+
+    const { data: profileData } = await supabase.from("profiles").select("*").eq("id", chefId).single();
+    const { count: followersCount } = await supabase.from("follows").select("*", { count: 'exact', head: true }).eq("following_id", chefId);
+    const { count: followingCount } = await supabase.from("follows").select("*", { count: 'exact', head: true }).eq("follower_id", chefId);
+    const { data: followCheck } = await supabase.from("follows").select("id").match({ follower_id: user.id, following_id: chefId }).single();
+    const chefPosts = posts.filter(p => p.authorId === chefId);
+    
+    setViewingChefRecipes(chefPosts);
+    setIsFollowingChef(!!followCheck);
+    setViewingChef({
+      id: chefId,
+      full_name: profileData?.full_name || fallbackName,
+      username: profileData?.username || `zestly_${chefId.substring(0, 4)}`, // 🔥 Changed Fallback
+      bio: profileData?.bio || "Passionate Chef at Zestly 🍳",
+      followersCount: followersCount || 0,
+      followingCount: followingCount || 0,
+      postsCount: chefPosts.length
+    });
+  };
+
+  const handleFollowToggle = async () => {
+    if (!checkAuth() || !viewingChef) return;
+    if (viewingChef.id === user.id) {
+      showToast("You can't follow yourself! 😅");
+      return;
+    }
+
+    const wasFollowing = isFollowingChef;
+    const targetId = viewingChef.id;
+    const myId = user.id;
+
+    setIsFollowingChef(!wasFollowing);
+    setViewingChef((prev: any) => ({
+      ...prev,
+      followersCount: wasFollowing ? prev.followersCount - 1 : prev.followersCount + 1
+    }));
+
+    if (wasFollowing) {
+      await supabase.from("follows").delete().match({ follower_id: myId, following_id: targetId });
+    } else {
+      await supabase.from("follows").insert({ follower_id: myId, following_id: targetId });
+    }
+  };
+
   const toggleLike = async (id: string) => {
     if (!checkAuth()) return;
     const post = posts.find(p => p.id === id);
     if (!post) return;
-    setPosts(posts.map(p => p.id === id ? { 
-      ...p, 
-      is_liked: !p.is_liked,
-      likesCount: p.is_liked ? p.likesCount - 1 : p.likesCount + 1 
-    } : p));
+    setPosts(posts.map(p => p.id === id ? { ...p, is_liked: !p.is_liked, likesCount: p.is_liked ? p.likesCount - 1 : p.likesCount + 1 } : p));
     await supabase.from("recipes").update({ is_liked: !post.is_liked }).eq("id", id);
   };
 
@@ -147,28 +259,18 @@ export default function HomeTab({ user }: HomeTabProps) {
     if (!text) return;
 
     setIsSubmittingComment(true); 
-
-    const currentUserName = user?.user_metadata?.full_name?.split(" ")[0] || "Chef";
+    const currentUserName = user?.user_metadata?.full_name?.split(" ")[0] || "Zestly"; // 🔥 Changed Fallback
     const newComment = { author: currentUserName, text: text };
     const newCommentsList = [...activeCommentsPost.commentsList, newComment];
 
-    const updatedPost = {
-      ...activeCommentsPost,
-      commentsCount: newCommentsList.length,
-      commentsList: newCommentsList
-    };
-
-    const { error } = await supabase.from("recipes").update({ 
-      comments_data: newCommentsList 
-    }).eq("id", activeCommentsPost.id);
+    const updatedPost = { ...activeCommentsPost, commentsCount: newCommentsList.length, commentsList: newCommentsList };
+    const { error } = await supabase.from("recipes").update({ comments_data: newCommentsList }).eq("id", activeCommentsPost.id);
 
     if (!error) {
       setPosts(posts.map(p => p.id === activeCommentsPost.id ? updatedPost : p));
       setActiveCommentsPost(updatedPost);
       setCommentInput("");
       showToast("Comment posted! 💬");
-    } else {
-      showAlert("Failed to post comment. Try again!");
     }
     setIsSubmittingComment(false); 
   };
@@ -182,388 +284,355 @@ export default function HomeTab({ user }: HomeTabProps) {
 
   const filteredPosts = useMemo(() => {
     let result = posts;
-    if (activeCuisine !== "All") {
-      result = result.filter(post => post.cuisine === activeCuisine);
-    }
-    if (searchQuery) {
+    if (activeCuisine !== "All") result = result.filter(post => post.cuisine === activeCuisine);
+    if (searchQuery && searchMode === "recipes") {
       const lowerQuery = searchQuery.toLowerCase();
-      result = result.filter(post => 
-        post.name.toLowerCase().includes(lowerQuery) || 
-        post.authorName.toLowerCase().includes(lowerQuery) ||
-        post.type.toLowerCase().includes(lowerQuery)
-      );
+      result = result.filter(post => post.name.toLowerCase().includes(lowerQuery) || post.type.toLowerCase().includes(lowerQuery));
     }
     return result;
-  }, [posts, searchQuery, activeCuisine]);
+  }, [posts, searchQuery, activeCuisine, searchMode]);
+
+  const filteredChefs = useMemo(() => {
+    if (!searchQuery || searchMode !== "chefs") return [];
+    return trendingChefs.filter(chef => chef.full_name.toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [trendingChefs, searchQuery, searchMode]);
 
   const featuredPost = posts.length > 0 ? posts[0] : null;
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-8 pb-24 relative max-w-full overflow-x-hidden cursor-default selection:bg-orange-500/10 w-full flex flex-col items-center">
       
-      <div className="px-4 sm:px-1 pt-6 w-full max-w-5xl">
-        <div className="relative bg-white dark:bg-[#1c1c1e] border border-slate-200 dark:border-white/5 p-1 rounded-full flex items-center shadow-sm">
+      {/* 🚀 SEARCH BAR WITH CANCEL BUTTON */}
+      <div className="px-4 sm:px-1 pt-6 w-full max-w-5xl flex items-center gap-3">
+        <div className="relative bg-white dark:bg-[#1c1c1e] border border-slate-200 dark:border-white/5 p-1 rounded-full flex-1 flex items-center shadow-sm">
           <div className="pl-4 pr-2 text-slate-400 dark:text-slate-500">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
           </div>
           <input 
             type="text" 
             value={searchQuery}
+            onFocus={() => setIsSearchActive(true)}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search recipes, chefs, or diets..." 
-            className="flex-1 bg-transparent text-slate-900 dark:text-white font-medium px-2 py-3 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 cursor-text"
+            placeholder="Search..."
+            className="flex-1 w-full bg-transparent text-slate-900 dark:text-white font-medium px-2 py-3 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 cursor-text"
           />
-          {searchQuery ? (
+          {searchQuery && (
             <button onClick={() => setSearchQuery("")} className="p-3 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer active:scale-90 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
-          ) : (
-            <button className="pr-4 pl-3 py-3 text-slate-400 hover:text-orange-500 transition-colors cursor-pointer active:scale-90 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
-            </button>
           )}
         </div>
-      </div>
-
-      <div className="w-full max-w-5xl">
-        <div className="flex items-center justify-between mb-2 px-5 sm:px-1">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Explore Cuisine</h3>
-          <span className="text-sm font-bold text-orange-500 cursor-pointer pr-1">See all</span>
-        </div>
-        
-        {/* 🚀 FIXED: No px padding on container, used first:ml-5 last:mr-5 logic */}
-        <div className="flex gap-3 overflow-x-auto py-2 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          {cuisinesList.map((cuisine, index) => (
-            <button 
-              key={index}
-              onClick={() => setActiveCuisine(cuisine.name)}
-              className={`shrink-0 snap-start flex items-center gap-2 px-5 py-3.5 rounded-full font-bold text-sm transition-all duration-300 cursor-pointer border outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] 
-                ${index === 0 ? "ml-5 sm:ml-1" : ""} 
-                ${index === cuisinesList.length - 1 ? "mr-5 sm:mr-1" : ""} 
-                ${activeCuisine === cuisine.name 
-                  ? "bg-orange-500 text-white border-orange-500 shadow-[0_4px_15px_rgba(249,115,22,0.4)] scale-[1.02]" 
-                  : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 dark:bg-[#1c1c1e] dark:text-slate-300 dark:border-transparent dark:hover:bg-white/10"
-                }`}
-            >
-              <span className="text-lg drop-shadow-sm">{cuisine.icon}</span> 
-              {cuisine.name}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {!searchQuery && activeCuisine === "All" && featuredPost && (
-        <div className="px-4 sm:px-1 w-full max-w-5xl">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight mb-4 px-1">Featured Recipe</h3>
-          
-          <div onClick={() => openCookMode(featuredPost)} className="relative w-full h-[22rem] sm:h-80 rounded-[2rem] overflow-hidden group cursor-pointer shadow-lg outline-none [-webkit-tap-highlight-color:transparent] border border-slate-200 dark:border-white/5">
-            {featuredPost.imageUrl ? (
-              <img src={featuredPost.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-            ) : (
-              <div className={`w-full h-full bg-linear-to-br ${featuredPost.gradient} flex items-center justify-center`}>
-                <span className="text-8xl">{featuredPost.emoji}</span>
-              </div>
-            )}
-            
-            <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/40 to-transparent p-6 flex flex-col justify-end">
-              <div className="bg-orange-500/20 backdrop-blur-md text-orange-400 border border-orange-500/30 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full w-fit mb-3 flex items-center gap-1.5">
-                🔥 Trending
-              </div>
-              <h3 className="text-3xl font-black text-white leading-tight mb-2 drop-shadow-md">{featuredPost.name}</h3>
-              <p className="text-slate-300 text-sm font-medium line-clamp-2 pr-10">Rich, creamy & full of classic flavor. A must try masterpiece.</p>
-              
-              <div className="flex gap-5 mt-4 text-xs font-bold text-slate-300">
-                 <span className="flex items-center gap-1.5 text-yellow-400"><span className="text-base">⭐</span> 4.8</span>
-                 <span className="flex items-center gap-1.5"><span className="text-base">⏱️</span> {featuredPost.time}</span>
-                 <span className="flex items-center gap-1.5 text-orange-400"><span className="text-base">🔥</span> {featuredPost.calories} cal</span>
-              </div>
-              
-              <button onClick={(e) => { e.stopPropagation(); toggleLike(featuredPost.id); }} className="absolute bottom-6 right-6 w-10 h-10 bg-white/10 backdrop-blur-md rounded-full border border-white/20 flex items-center justify-center text-white hover:bg-orange-500 transition-colors">
-                <svg className={`w-5 h-5 ${featuredPost.is_liked ? 'fill-white text-white' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="w-full max-w-5xl pt-2">
-        <div className="flex items-center justify-between mb-2 px-5 sm:px-1">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Trending Chefs</h3>
-          <span className="text-sm font-bold text-orange-500 cursor-pointer pr-1">See all</span>
-        </div>
-        
-        {/* 🚀 FIXED: No px padding on container, used first:ml-5 last:mr-5 logic */}
-        <div className="flex gap-4 overflow-x-auto py-4 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          {['Nadeem', 'Rahul', 'Sneha', 'Aisha', 'Karan'].map((chef, i, arr) => (
-            <div key={i} className={`flex flex-col items-center shrink-0 snap-start cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${i === 0 ? "ml-5 sm:ml-1" : ""} ${i === arr.length - 1 ? "mr-5 sm:mr-1" : ""}`}>
-              <div className="relative w-[76px] h-[76px] rounded-full p-[3px] bg-linear-to-tr from-orange-500 via-red-500 to-purple-500 group-hover:scale-105 group-active:scale-95 transition-all duration-300 shadow-md mb-2.5">
-                <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-2xl font-extrabold text-slate-900 dark:text-white border-[3px] border-white dark:border-[#07070a] transition-colors">
-                  {chef.charAt(0)}
-                </div>
-                <div className="absolute bottom-0 right-0 bg-orange-500 w-5 h-5 rounded-full border-2 border-white dark:border-[#07070a] flex items-center justify-center">
-                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth="4" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
-                </div>
-              </div>
-              <span className="text-sm font-bold text-slate-900 dark:text-white transition-colors">Chef {chef}</span>
-              <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">{Math.floor(Math.random() * 10 + 5)}.{Math.floor(Math.random() * 9)}K followers</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="mt-6 w-full max-w-5xl">
-        <div className="flex justify-between items-end mb-5 px-5 sm:px-1">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
-            {activeCuisine === "All" ? "Global Feed" : `${activeCuisine} Cuisine`} 
-          </h3>
-          {(searchQuery || activeCuisine !== "All") && <span className="text-sm font-bold text-blue-600 dark:text-blue-400 transition-colors">{filteredPosts.length} Results</span>}
-        </div>
-        
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-4 cursor-wait text-center">
-             <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        ) : filteredPosts.length === 0 ? (
-          <div className="text-center py-16 px-6 border-2 border-dashed border-slate-300 dark:border-white/10 rounded-[2.5rem] bg-white dark:bg-white/[0.01] mx-4">
-            <div className="text-6xl mb-5 opacity-50">🧭</div>
-            <h3 className="text-slate-900 dark:text-white font-black text-lg mb-1">No recipes found</h3>
-            <p className="text-slate-500 dark:text-slate-400 font-medium text-sm">Be the first chef to add a recipe here!</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 sm:gap-7">
-            {filteredPosts.map((post, index) => (
-              <div key={post.id} className="flex flex-col w-full">
-                
-                <div className="relative sm:bg-white sm:dark:bg-[#0b0b0e] sm:border sm:border-slate-200/80 sm:dark:border-white/10 sm:rounded-[2.5rem] sm:overflow-hidden sm:shadow-[0_8px_35px_#0000000d] sm:dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col">
-                  
-                  <div className="py-3.5 px-4 sm:p-5 flex justify-between items-center sm:bg-slate-50 sm:dark:bg-white/[0.02] sm:border-b border-slate-100 dark:border-white/5">
-                    <div className="flex items-center gap-3 cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                      <div className="w-10 h-10 rounded-full bg-linear-to-tr from-orange-500 to-red-500 p-[2px] shadow">
-                        <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-sm font-black text-slate-900 dark:text-white uppercase transition-colors">
-                          {post.authorName.charAt(0)}
-                        </div>
-                      </div>
-                      <div className="flex flex-col">
-                        <p className="text-sm text-slate-900 dark:text-white font-bold transition-colors leading-tight">{post.authorName}</p>
-                        <p className="text-[10px] text-slate-500 font-medium">New Delhi, India</p>
-                      </div>
-                    </div>
-                    <button className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer p-2 rounded-full active:scale-90 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/></svg>
-                    </button>
-                  </div>
-
-                  <div className={`w-full h-[26rem] sm:h-72 relative flex items-center justify-center cursor-pointer sm:overflow-hidden outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${!post.imageUrl ? `bg-linear-to-br ${post.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
-                    {post.imageUrl ? (
-                      <img src={post.imageUrl} alt={post.name} className="w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" />
-                    ) : (
-                      <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{post.emoji}</span>
-                    )}
-                  </div>
-
-                  <div className="py-4 px-4 sm:p-6 flex-1 flex flex-col justify-between bg-transparent transition-colors z-10">
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-5">
-                          <button onClick={() => toggleLike(post.id)} className="group transition-transform active:scale-125 cursor-pointer outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                            <svg className={`w-7 h-7 transition-all duration-300 outline-none focus:outline-none ${post.is_liked ? 'fill-red-500 text-red-500 scale-110' : 'text-slate-900 dark:text-white group-hover:text-red-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
-                          </button>
-
-                          <button onClick={() => openComments(post)} className="group cursor-pointer transition-colors active:scale-95 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                            <svg className="w-7 h-7 text-slate-900 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                          </button>
-
-                          <button onClick={() => handleShare(post.name)} className="cursor-pointer active:scale-110 transition-transform outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                            <svg className="w-7 h-7 text-slate-900 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
-                          </button>
-                        </div>
-                        <button className="text-slate-900 dark:text-white outline-none [-webkit-tap-highlight-color:transparent]">
-                           <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
-                        </button>
-                      </div>
-
-                      <p className="font-bold text-sm text-slate-900 dark:text-white mb-2">{post.likesCount} likes</p>
-                      
-                      <p className="text-sm text-slate-900 dark:text-white leading-relaxed line-clamp-2">
-                        <strong className="mr-1.5 font-bold">{post.authorName}</strong> 
-                        This authentic <span className="text-orange-500 dark:text-orange-400 font-bold">{post.cuisine}</span> masterpiece is trending right now! 🥘✨
-                      </p>
-                      <button onClick={() => openComments(post)} className="text-slate-500 text-sm mt-1.5 font-medium outline-none [-webkit-tap-highlight-color:transparent]">
-                        View all {post.commentsCount} comments
-                      </button>
-                    </div>
-
-                    <button 
-                      onClick={() => openCookMode(post)} 
-                      className="mt-4 w-full bg-slate-100 dark:bg-white/10 hover:bg-orange-500 dark:hover:bg-orange-500 text-slate-900 dark:text-white hover:text-white font-bold py-3 rounded-xl transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer group/btn active:scale-95 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]"
-                    >
-                      <span>Cook Now</span>
-                      <svg className="w-4 h-4 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
-                    </button>
-                  </div>
-                </div>
-
-                {index !== filteredPosts.length - 1 ? (
-                  <div className="sm:hidden py-6 flex items-center justify-center w-full opacity-50">
-                    <div className="h-[1px] w-full bg-slate-300 dark:bg-slate-700"></div>
-                  </div>
-                ) : (
-                  <div className="sm:hidden h-4"></div>
-                )}
-
-              </div>
-            ))}
-          </div>
+        {isSearchActive && (
+          <button 
+            onClick={() => { setIsSearchActive(false); setSearchQuery(""); }} 
+            className="text-slate-900 dark:text-white font-bold text-sm px-2 cursor-pointer active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]"
+          >
+            Cancel
+          </button>
         )}
       </div>
 
-      {mounted && activeCommentsPost && createPortal(
-        <div className="fixed inset-0 z-[99999] flex flex-col justify-end bg-black/60 dark:bg-black/80 backdrop-blur-sm sm:items-center sm:justify-center p-0 sm:p-4 transition-all">
-          <div className="bg-white dark:bg-[#1c1c1e] border border-slate-200 dark:border-white/10 w-full sm:w-[500px] h-[85vh] sm:h-[650px] rounded-t-[2.5rem] sm:rounded-[2.5rem] flex flex-col overflow-hidden animate-in slide-in-from-bottom-full duration-300 shadow-2xl">
-            
-            <div className="shrink-0 flex justify-between items-center px-6 py-4 border-b border-slate-100 dark:border-white/10 z-10">
-              <div className="w-9 h-9"></div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Comments</h3>
-              <button onClick={() => setActiveCommentsPost(null)} className="cursor-pointer text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 w-9 h-9 rounded-full flex items-center justify-center transition-colors outline-none [-webkit-tap-highlight-color:transparent]">✕</button>
+      {/* 🚀 INSTAGRAM STYLE TABS */}
+      {isSearchActive && (
+        <div className="w-full max-w-5xl px-4 sm:px-1 mt-2">
+          <div className="flex gap-8 border-b border-slate-200 dark:border-white/10 px-2">
+            <button 
+              onClick={() => setSearchMode('recipes')} 
+              className={`pb-3 text-sm font-bold transition-colors outline-none [-webkit-tap-highlight-color:transparent] ${searchMode === 'recipes' ? 'border-b-2 border-slate-900 dark:border-white text-slate-900 dark:text-white' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+            >
+              Recipes
+            </button>
+            <button 
+              onClick={() => setSearchMode('chefs')} 
+              className={`pb-3 text-sm font-bold transition-colors outline-none [-webkit-tap-highlight-color:transparent] ${searchMode === 'chefs' ? 'border-b-2 border-slate-900 dark:border-white text-slate-900 dark:text-white' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+            >
+              Chefs
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================= */}
+      {/* 🚀 SEARCH ACTIVE VIEW */}
+      {/* ========================================= */}
+      {isSearchActive ? (
+        <div className="w-full max-w-5xl px-4 sm:px-1 flex-1">
+          {!searchQuery ? (
+            <div className="flex flex-col items-center justify-center py-20 opacity-50">
+              <span className="text-4xl mb-3">🔍</span>
+              <p className="font-bold text-slate-500">Type something to search {searchMode}</p>
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              {activeCommentsPost.commentsList.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center opacity-50">
-                  <span className="text-5xl mb-3">💬</span>
-                  <p className="text-slate-500 font-bold">No comments yet.</p>
-                  <p className="text-xs">Be the first to comment!</p>
-                </div>
-              ) : (
-                activeCommentsPost.commentsList.map((cmt, idx) => (
-                  <div key={idx} className="flex gap-3 animate-in fade-in slide-in-from-bottom-2">
-                    <div className="w-8 h-8 rounded-full bg-linear-to-tr from-blue-400 to-purple-500 shrink-0 flex items-center justify-center text-white text-xs font-bold uppercase">
-                      {cmt.author.charAt(0)}
+          ) : searchMode === "chefs" ? (
+            filteredChefs.length === 0 ? (
+              <p className="text-slate-500 text-sm font-medium mt-4">No chefs found matching "{searchQuery}"</p>
+            ) : (
+              <div className="flex flex-col gap-4 mt-4">
+                {searchedChefs.map((chef, i) => (
+                  <div key={i} onClick={() => openChefProfile(chef.id, chef.full_name)} className="flex items-center gap-4 bg-white dark:bg-[#1c1c1e] p-4 rounded-[1.5rem] border border-slate-200 dark:border-white/5 cursor-pointer shadow-sm active:scale-95 transition-all">
+                    <div className="w-14 h-14 rounded-full bg-linear-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-xl font-bold">
+                      {chef.full_name.charAt(0)}
                     </div>
                     <div>
-                      <strong className="text-slate-900 dark:text-white text-sm mr-2 font-bold">{cmt.author}</strong>
-                      <span className="text-slate-700 dark:text-slate-300 text-sm">{cmt.text}</span>
+                      <h4 className="font-extrabold text-slate-900 dark:text-white text-base">{chef.full_name}</h4>
+                      <p className="text-xs text-slate-500 font-medium">@{chef.username || `zestly_${chef.id.substring(0, 4)}`} • View Profile</p>
                     </div>
                   </div>
-                ))
-              )}
+                ))}
+              </div>
+            )
+          ) : (
+            filteredPosts.length === 0 ? (
+              <p className="text-slate-500 text-sm font-medium mt-4">No recipes found matching "{searchQuery}"</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 mt-4">
+                {filteredPosts.map((post) => (
+                  <div key={post.id} onClick={() => openCookMode(post)} className="aspect-square relative cursor-pointer group outline-none [-webkit-tap-highlight-color:transparent] overflow-hidden">
+                    {post.imageUrl ? (
+                      <img src={post.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    ) : (
+                      <div className={`w-full h-full bg-linear-to-br ${post.gradient} flex items-center justify-center`}><span className="text-3xl sm:text-5xl">{post.emoji}</span></div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+        </div>
+      ) : (
+        /* ========================================= */
+        /* 🚀 NORMAL FEED VIEW (Visible when NOT searching) */
+        /* ========================================= */
+        <>
+          <div className="w-full max-w-5xl">
+            <div className="flex items-center justify-between mb-2 px-5 sm:px-1">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Explore Cuisine</h3>
             </div>
-
-            <div className="shrink-0 p-4 border-t border-slate-100 dark:border-white/10 flex gap-3 pb-safe">
-               <input 
-                  type="text" 
-                  placeholder="Add a comment..." 
-                  value={commentInput}
-                  onChange={(e) => setCommentInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && submitComment()}
-                  disabled={isSubmittingComment}
-                  className="flex-1 bg-slate-100 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-full px-5 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 cursor-text transition-colors disabled:opacity-50"
-                />
-                
+            <div className="flex gap-3 overflow-x-auto py-2 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {cuisinesList.map((cuisine, index, arr) => (
                 <button 
-                  onClick={submitComment}
-                  disabled={!commentInput.trim() || isSubmittingComment}
-                  className="bg-blue-500 hover:bg-blue-600 text-white px-5 rounded-full flex items-center justify-center font-bold transition-all disabled:opacity-50 active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]"
+                  key={index}
+                  onClick={() => setActiveCuisine(cuisine.name)}
+                  className={`shrink-0 snap-start flex items-center gap-2 px-5 py-3.5 rounded-full font-bold text-sm transition-all duration-300 cursor-pointer border outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] 
+                    ${index === 0 ? "ml-5 sm:ml-1" : ""} 
+                    ${index === arr.length - 1 ? "mr-5 sm:mr-1" : ""} 
+                    ${activeCuisine === cuisine.name ? "bg-orange-500 text-white border-orange-500 shadow-[0_4px_15px_rgba(249,115,22,0.4)] scale-[1.02]" : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 dark:bg-[#1c1c1e] dark:text-slate-300 dark:border-transparent dark:hover:bg-white/10"}`}
                 >
-                  {isSubmittingComment ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : "Post"}
+                  <span className="text-lg drop-shadow-sm">{cuisine.icon}</span> {cuisine.name}
                 </button>
+              ))}
+            </div>
+          </div>
+
+          {!searchQuery && activeCuisine === "All" && featuredPost && (
+            <div className="px-4 sm:px-1 w-full max-w-5xl">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight mb-4 px-1">Featured Recipe</h3>
+              <div onClick={() => openCookMode(featuredPost)} className="relative w-full h-[22rem] sm:h-80 rounded-[2rem] overflow-hidden group cursor-pointer shadow-lg outline-none [-webkit-tap-highlight-color:transparent] border border-slate-200 dark:border-white/5">
+                {featuredPost.imageUrl ? (
+                  <img src={featuredPost.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                ) : (
+                  <div className={`w-full h-full bg-linear-to-br ${featuredPost.gradient} flex items-center justify-center`}><span className="text-8xl">{featuredPost.emoji}</span></div>
+                )}
+                <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/40 to-transparent p-6 flex flex-col justify-end">
+                  <div className="bg-orange-500/20 backdrop-blur-md text-orange-400 border border-orange-500/30 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full w-fit mb-3 flex items-center gap-1.5">🔥 Trending</div>
+                  <h3 className="text-3xl font-black text-white leading-tight mb-2 drop-shadow-md">{featuredPost.name}</h3>
+                  <div className="flex gap-5 mt-4 text-xs font-bold text-slate-300">
+                     <span className="flex items-center gap-1.5 text-yellow-400"><span className="text-base">⭐</span> 4.8</span>
+                     <span className="flex items-center gap-1.5"><span className="text-base">⏱️</span> {featuredPost.time}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="w-full max-w-5xl pt-2">
+            <div className="flex items-center justify-between mb-2 px-5 sm:px-1">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Trending Chefs</h3>
+            </div>
+            <div className="flex gap-4 overflow-x-auto py-4 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {/* 🔥 Changed default mock array mapped names */}
+              {['Zestly', 'Rahul', 'Sneha', 'Aisha', 'Karan'].map((chef, i, arr) => (
+                <div key={i} onClick={() => openChefProfile("mock", chef)} className={`flex flex-col items-center shrink-0 snap-start cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${i === 0 ? "ml-5 sm:ml-1" : ""} ${i === arr.length - 1 ? "mr-5 sm:mr-1" : ""}`}>
+                  <div className="relative w-[76px] h-[76px] rounded-full p-[3px] bg-linear-to-tr from-orange-500 via-red-500 to-purple-500 group-hover:scale-105 group-active:scale-95 transition-all duration-300 shadow-md mb-2.5">
+                    <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-2xl font-extrabold text-slate-900 dark:text-white border-[3px] border-white dark:border-[#07070a] transition-colors">
+                      {chef.charAt(0)}
+                    </div>
+                    <div className="absolute bottom-0 right-0 bg-orange-500 w-5 h-5 rounded-full border-2 border-white dark:border-[#07070a] flex items-center justify-center">
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth="4" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </div>
+                  </div>
+                  <span className="text-sm font-bold text-slate-900 dark:text-white transition-colors">{chef}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 w-full max-w-5xl">
+            <div className="flex justify-between items-end mb-5 px-5 sm:px-1">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">{activeCuisine === "All" ? "Global Feed" : `${activeCuisine} Cuisine`}</h3>
+            </div>
+            
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-4 cursor-wait text-center"><div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div></div>
+            ) : filteredPosts.length === 0 ? (
+              <div className="text-center py-16 px-6 border-2 border-dashed border-slate-300 dark:border-white/10 rounded-[2.5rem] bg-white dark:bg-white/[0.01] mx-4"><p className="text-slate-500 dark:text-slate-400 font-medium text-sm">No recipes found!</p></div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 sm:gap-7">
+                {filteredPosts.map((post, index) => (
+                  <div key={post.id} className="flex flex-col w-full">
+                    <div className="relative sm:bg-white sm:dark:bg-[#0b0b0e] sm:border sm:border-slate-200/80 sm:dark:border-white/10 sm:rounded-[2.5rem] sm:overflow-hidden sm:shadow-[0_8px_35px_#0000000d] sm:dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col">
+                      
+                      <div className="py-3.5 px-4 sm:p-5 flex justify-between items-center sm:bg-slate-50 sm:dark:bg-white/[0.02] sm:border-b border-slate-100 dark:border-white/5">
+                        <div onClick={() => openChefProfile(post.authorId || "mock", post.authorName)} className="flex items-center gap-3 cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+                          <div className="w-10 h-10 rounded-full bg-linear-to-tr from-orange-500 to-red-500 p-[2px] shadow">
+                            <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-sm font-black text-slate-900 dark:text-white uppercase transition-colors">{post.authorName.charAt(0)}</div>
+                          </div>
+                          <div className="flex flex-col">
+                            <p className="text-sm text-slate-900 dark:text-white font-bold transition-colors leading-tight group-hover:underline">{post.authorName}</p>
+                            <p className="text-[10px] text-slate-500 font-medium">Zestly Chef</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={`w-full h-[26rem] sm:h-72 relative flex items-center justify-center cursor-pointer sm:overflow-hidden outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${!post.imageUrl ? `bg-linear-to-br ${post.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
+                        {post.imageUrl ? <img src={post.imageUrl} className="w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" /> : <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{post.emoji}</span>}
+                      </div>
+
+                      <div className="py-4 px-4 sm:p-6 flex-1 flex flex-col justify-between bg-transparent transition-colors z-10">
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-5">
+                              <button onClick={() => toggleLike(post.id)} className="group transition-transform active:scale-125 cursor-pointer outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+                                <svg className={`w-7 h-7 transition-all duration-300 outline-none focus:outline-none ${post.is_liked ? 'fill-red-500 text-red-500 scale-110' : 'text-slate-900 dark:text-white group-hover:text-red-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                              </button>
+                              <button onClick={() => openComments(post)} className="group cursor-pointer transition-colors active:scale-95 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+                                <svg className="w-7 h-7 text-slate-900 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                              </button>
+                              <button onClick={() => handleShare(post.name)} className="cursor-pointer active:scale-110 transition-transform outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+                                <svg className="w-7 h-7 text-slate-900 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+                              </button>
+                            </div>
+                          </div>
+                          <p className="font-bold text-sm text-slate-900 dark:text-white mb-2">{post.likesCount} likes</p>
+                          <p className="text-sm text-slate-900 dark:text-white leading-relaxed line-clamp-2"><strong className="mr-1.5 font-bold">{post.authorName}</strong> Trending right now! 🥘✨</p>
+                        </div>
+                        <button onClick={() => openCookMode(post)} className="mt-4 w-full bg-slate-100 dark:bg-white/10 hover:bg-orange-500 dark:hover:bg-orange-500 text-slate-900 dark:text-white hover:text-white font-bold py-3 rounded-xl transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer group/btn active:scale-95 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+                          <span>Cook Now</span>
+                        </button>
+                      </div>
+                    </div>
+                    {index !== filteredPosts.length - 1 ? <div className="sm:hidden py-6 flex items-center justify-center w-full opacity-50"><div className="h-[1px] w-full bg-slate-300 dark:bg-slate-700"></div></div> : <div className="sm:hidden h-4"></div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ========================================= */}
+      {/* 🚀 MODAL: INSTAGRAM STYLE CHEF PROFILE */}
+      {/* ========================================= */}
+      {mounted && viewingChef && createPortal(
+        <div className="fixed inset-0 z-[99999] bg-slate-50 dark:bg-[#07070a] flex flex-col animate-in slide-in-from-bottom-full duration-500">
+          <div className="w-full max-w-4xl mx-auto flex flex-col h-full relative bg-white dark:bg-[#07070a] shadow-2xl">
+            
+            <div className="shrink-0 flex justify-between items-center px-6 py-4 border-b border-slate-100 dark:border-white/5 sticky top-0 bg-white dark:bg-[#07070a] z-50">
+              <button onClick={() => setViewingChef(null)} className="cursor-pointer text-slate-600 dark:text-white w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-white/10 transition-colors outline-none [-webkit-tap-highlight-color:transparent]">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
+              </button>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white">{viewingChef.username || viewingChef.full_name.toLowerCase().replace(" ", "_")}</h3>
+              <div className="w-10 h-10"></div> 
+            </div>
+            
+            <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <div className="px-6 py-8 flex flex-col sm:flex-row items-start sm:items-center gap-6 sm:gap-10">
+                <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-linear-to-tr from-orange-500 to-red-500 p-1 shrink-0">
+                  <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-4xl sm:text-5xl font-black text-slate-900 dark:text-white uppercase">
+                    {viewingChef.full_name.charAt(0)}
+                  </div>
+                </div>
+                
+                <div className="flex-1 w-full">
+                  <div className="flex justify-around sm:justify-start sm:gap-12 mb-5 text-center sm:text-left">
+                    <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{viewingChef.postsCount}</span><span className="text-xs text-slate-500 font-bold">Posts</span></div>
+                    <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{viewingChef.followersCount}</span><span className="text-xs text-slate-500 font-bold">Followers</span></div>
+                    <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{viewingChef.followingCount}</span><span className="text-xs text-slate-500 font-bold">Following</span></div>
+                  </div>
+
+                  <div className="mb-5">
+                    <h4 className="font-extrabold text-slate-900 dark:text-white text-base">{viewingChef.full_name}</h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium whitespace-pre-wrap leading-relaxed">{viewingChef.bio}</p>
+                  </div>
+
+                  {viewingChef.id !== user?.id && (
+                    <button onClick={handleFollowToggle} className={`cursor-pointer w-full sm:w-auto px-10 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] ${isFollowingChef ? 'bg-slate-200 dark:bg-white/10 text-slate-900 dark:text-white hover:bg-slate-300 dark:hover:bg-white/20' : 'bg-orange-500 text-white hover:bg-orange-600 shadow-[0_4px_15px_#f973164d]'}`}>
+                      {isFollowingChef ? 'Following' : 'Follow'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-center border-t border-slate-200 dark:border-white/5">
+                <div className="w-1/2 border-t-2 border-slate-900 dark:border-white py-3 flex justify-center text-slate-900 dark:text-white">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-0.5 sm:gap-1 pb-10">
+                {viewingChefRecipes.length === 0 ? (
+                  <div className="col-span-3 text-center py-20 text-slate-500 font-medium text-sm">No recipes yet.</div>
+                ) : (
+                  viewingChefRecipes.map((post) => (
+                    <div key={post.id} onClick={() => {setViewingChef(null); openCookMode(post);}} className="aspect-square relative cursor-pointer group outline-none [-webkit-tap-highlight-color:transparent] overflow-hidden">
+                      {post.imageUrl ? (
+                        <img src={post.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      ) : (
+                        <div className={`w-full h-full bg-linear-to-br ${post.gradient} flex items-center justify-center`}><span className="text-3xl sm:text-5xl">{post.emoji}</span></div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
             </div>
           </div>
         </div>,
         document.body
+      )}
+
+      {/* PORTALS FOR OTHER MODALS (Comments, Alerts, Toasts) */}
+      {mounted && activeCommentsPost && createPortal(
+        <div className="fixed inset-0 z-[99999] flex flex-col justify-end bg-black/60 dark:bg-black/80 backdrop-blur-sm sm:items-center sm:justify-center p-0 sm:p-4 transition-all">
+          <div className="bg-white dark:bg-[#1c1c1e] border border-slate-200 dark:border-white/10 w-full sm:w-[500px] h-[85vh] sm:h-[650px] rounded-t-[2.5rem] sm:rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
+            <div className="shrink-0 flex justify-between items-center px-6 py-4 border-b border-slate-100 dark:border-white/10 z-10">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Comments</h3>
+              <button onClick={() => setActiveCommentsPost(null)} className="cursor-pointer text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 w-9 h-9 rounded-full flex items-center justify-center transition-colors">✕</button>
+            </div>
+            <div className="flex-1 p-6"></div>
+            <div className="shrink-0 p-4 border-t border-slate-100 dark:border-white/10 flex gap-3">
+               <input type="text" placeholder="Add a comment..." value={commentInput} onChange={(e) => setCommentInput(e.target.value)} className="flex-1 bg-slate-100 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-full px-5 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-orange-400" />
+               <button onClick={submitComment} className="bg-orange-500 hover:bg-orange-600 text-white px-5 rounded-full flex items-center justify-center font-bold">Post</button>
+            </div>
+          </div>
+        </div>, document.body
       )}
 
       {mounted && cookModePost && createPortal(
-        <div className="fixed inset-0 z-[99999] flex flex-col bg-slate-50 dark:bg-[#0b0b0e] sm:p-4 transition-all">
-          <div className="w-full h-full max-w-2xl mx-auto sm:border border-slate-200 dark:border-white/10 sm:rounded-[2.5rem] flex flex-col bg-white dark:bg-[#07070a] shadow-2xl relative overflow-hidden animate-in slide-in-from-bottom-full duration-500">
-            
-            <div className="shrink-0 pt-12 pb-4 px-6 bg-slate-50 dark:bg-white/[0.02] border-b border-slate-200 dark:border-white/5 relative z-20">
-              <button onClick={() => setCookModePost(null)} className="absolute top-6 right-6 cursor-pointer bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-white w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-300 dark:hover:bg-white/20 transition-colors outline-none [-webkit-tap-highlight-color:transparent]">✕</button>
-              <h3 className="text-xl font-black text-slate-900 dark:text-white mb-4 pr-10 leading-tight">{cookModePost.name}</h3>
-              
-              <div className="flex gap-1 mb-2">
-                <div className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${currentStep === -1 ? 'bg-orange-500' : 'bg-slate-200 dark:bg-white/10'}`}></div>
-                {cookModePost.steps.map((_, idx) => (
-                  <div key={idx} className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${currentStep >= idx ? 'bg-orange-500' : 'bg-slate-200 dark:bg-white/10'}`}></div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-6 py-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              {currentStep === -1 && (
-                <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-8">
-                  <div className="bg-linear-to-r from-orange-50 to-red-50 dark:from-orange-500/10 dark:to-red-500/5 border border-orange-200 dark:border-orange-500/20 p-5 rounded-[2rem] flex justify-between items-center">
-                    <div>
-                      <span className="text-orange-600 dark:text-orange-400 font-bold text-sm block">Serving Size</span>
-                    </div>
-                    <div className="flex items-center gap-4 bg-white dark:bg-black/40 p-1.5 rounded-xl border border-orange-100 dark:border-white/5 shadow-sm dark:shadow-none">
-                      <button onClick={() => setPortions(Math.max(1, portions - 1))} className="cursor-pointer w-10 h-10 rounded-lg bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-900 dark:text-white font-black text-lg active:scale-95 transition-transform outline-none [-webkit-tap-highlight-color:transparent]">-</button>
-                      <span className="font-black text-slate-900 dark:text-white w-6 text-center text-lg">{portions}</span>
-                      <button onClick={() => setPortions(portions + 1)} className="cursor-pointer w-10 h-10 rounded-lg bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-900 dark:text-white font-black text-lg active:scale-95 transition-transform outline-none [-webkit-tap-highlight-color:transparent]">+</button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-slate-900 dark:text-white font-black text-lg mb-4">Ingredients</h4>
-                    <ul className="grid grid-cols-1 gap-3">
-                      {cookModePost.ingredients.map((ing, i) => (
-                        <li key={i} className="flex items-center gap-4 bg-slate-50 dark:bg-white/[0.02] p-4 rounded-2xl border border-slate-200 dark:border-white/5">
-                          <span className="text-slate-700 dark:text-white font-medium">{ing} <span className="text-orange-500 dark:text-orange-400 font-bold ml-1">(x{portions})</span></span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
-
-              {currentStep >= 0 && (
-                <div className="flex flex-col items-center justify-center h-full text-center space-y-8 animate-in zoom-in-95 duration-500">
-                  <div className="w-24 h-24 rounded-full bg-linear-to-br from-orange-400 to-red-500 flex items-center justify-center text-4xl font-black text-white shadow-[0_8px_30px_#f9731666]">{currentStep + 1}</div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-white px-4 leading-relaxed">{cookModePost.steps[currentStep]}</h2>
-                </div>
-              )}
-            </div>
-
-            <div className="shrink-0 p-6 bg-linear-to-t from-white dark:from-[#07070a] to-transparent relative z-20">
-              {currentStep === -1 ? (
-                <button onClick={() => setCurrentStep(0)} className="cursor-pointer w-full bg-slate-900 dark:bg-white text-white dark:text-black font-black text-lg py-5 rounded-[1.5rem] hover:scale-[1.02] active:scale-[0.98] transition-all outline-none [-webkit-tap-highlight-color:transparent] shadow-lg">Let's Start Cooking</button>
-              ) : (
-                <div className="flex gap-4">
-                  <button onClick={() => setCurrentStep(currentStep - 1)} className="cursor-pointer w-1/3 bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 text-slate-700 dark:text-white font-bold py-5 rounded-[1.5rem] transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">Back</button>
-                  <button onClick={() => { if (currentStep < cookModePost.steps.length - 1) setCurrentStep(currentStep + 1); else setCookModePost(null); }} className={`cursor-pointer w-2/3 text-white font-black py-5 rounded-[1.5rem] hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg outline-none [-webkit-tap-highlight-color:transparent] ${currentStep === cookModePost.steps.length - 1 ? 'bg-green-500 hover:bg-green-600 shadow-[0_8px_20px_#22c55e66]' : 'bg-orange-500 hover:bg-orange-600 shadow-[0_8px_20px_#f9731666]'}`}>
-                    {currentStep === cookModePost.steps.length - 1 ? "Finish Meal 🍽️" : "Next Step"}
-                  </button>
-                </div>
-              )}
+        <div className="fixed inset-0 z-[99999] bg-white dark:bg-[#07070a] flex flex-col transition-all">
+          <div className="w-full max-w-4xl mx-auto flex flex-col h-full relative">
+            <div className="shrink-0 pt-10 pb-4 px-6 sm:px-10 border-b border-slate-100 dark:border-white/5 relative z-20">
+              <button onClick={() => setCookModePost(null)} className="absolute top-8 right-6 cursor-pointer bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-white w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-200">✕</button>
+              <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-6 pr-14 leading-tight">{cookModePost.name}</h3>
             </div>
           </div>
-        </div>,
-        document.body
-      )}
-
-      {mounted && alertModal.isOpen && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-white dark:bg-[#1c1c1e] border border-slate-200 dark:border-white/10 w-full max-w-sm rounded-[2rem] p-6 text-center shadow-2xl animate-in zoom-in-95">
-            <div className="w-16 h-16 bg-red-100 dark:bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
-              🔒
-            </div>
-            <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Login Required</h3>
-            <p className="text-slate-500 dark:text-slate-400 font-medium text-sm mb-6">{alertModal.message}</p>
-            <button onClick={() => setAlertModal({ isOpen: false, message: "" })} className="w-full bg-orange-500 text-white font-bold py-3.5 rounded-xl active:scale-95 transition-transform cursor-pointer outline-none [-webkit-tap-highlight-color:transparent]">Got it</button>
-          </div>
-        </div>,
-        document.body
+        </div>, document.body
       )}
 
       {mounted && toast.isOpen && createPortal(
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[99999] animate-in slide-in-from-top-5 fade-out duration-300 pointer-events-none">
-          <div className="bg-slate-900 dark:bg-[#1c1c1e] text-white dark:text-white px-6 py-3.5 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.2)] text-sm font-bold flex items-center gap-2 border border-slate-700 dark:border-white/10">
-            <span>{toast.message}</span>
-          </div>
-        </div>,
-        document.body
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[99999] pointer-events-none">
+          <div className="bg-slate-900 dark:bg-[#1c1c1e] text-white px-6 py-3.5 rounded-full shadow-lg text-sm font-bold border border-slate-700 dark:border-white/10">{toast.message}</div>
+        </div>, document.body
       )}
-
     </div>
   );
 }
