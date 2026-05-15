@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { createPortal } from "react-dom"; // 🔥 NAYA: Popups ko navbar ke upar laane ke liye
+import { createPortal } from "react-dom";
 
 interface HomeTabProps {
   user: any;
@@ -44,7 +44,7 @@ export default function HomeTab({ user }: HomeTabProps) {
   // Instagram Style Comment Modal State
   const [activeCommentsPost, setActiveCommentsPost] = useState<FeedPost | null>(null);
   const [commentInput, setCommentInput] = useState("");
-  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false); 
 
   // Cook Mode States
   const [cookModePost, setCookModePost] = useState<FeedPost | null>(null);
@@ -55,7 +55,7 @@ export default function HomeTab({ user }: HomeTabProps) {
   const [activeCuisine, setActiveCuisine] = useState<string>("All"); 
   const router = useRouter();
 
-  // 🔥 NAYA: Portal mount check (Taki hydration error na aaye)
+  // Portal mount state
   const [mounted, setMounted] = useState(false);
 
   const cuisinesList = [
@@ -68,7 +68,7 @@ export default function HomeTab({ user }: HomeTabProps) {
   ];
 
   useEffect(() => {
-    setMounted(true); // Mount set kiya portal ke liye
+    setMounted(true);
     fetchFeed();
   }, []);
 
@@ -295,105 +295,129 @@ export default function HomeTab({ user }: HomeTabProps) {
             <p className="text-slate-500 dark:text-slate-400 font-medium text-sm">Be the first chef to add a recipe here!</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-10 sm:gap-7">
-            {filteredPosts.map((post) => (
-              <div key={post.id} className="mb-8 sm:mb-0 sm:bg-white sm:dark:bg-[#0b0b0e] sm:border sm:border-slate-200/80 sm:dark:border-white/10 sm:rounded-[2.5rem] sm:overflow-hidden sm:shadow-[0_8px_35px_#0000000d] sm:dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col">
+          /* 🔥 FIX: Mobile pe gap-0 kiya hai taaki padding py-10 exactly center mein line laye */
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 sm:gap-7">
+            {filteredPosts.map((post, index) => (
+              <div key={post.id} className="flex flex-col w-full">
                 
-                {/* Header: Author Info */}
-                <div className="py-3.5 sm:p-5 flex justify-between items-center sm:bg-slate-50 sm:dark:bg-white/[0.02] sm:border-b border-slate-100 dark:border-white/5">
-                  <div className="flex items-center gap-3.5 cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                    <div className="w-11 h-11 rounded-full bg-linear-to-tr from-orange-500 to-red-500 p-[2px] shadow">
-                      <div className="w-full h-full bg-white dark:bg-[#0b0b0e] rounded-full flex items-center justify-center text-sm font-black text-slate-900 dark:text-white uppercase transition-colors">
-                        {post.authorName.charAt(0)}
+                {/* THE CARD ITSELF */}
+                <div className="relative sm:bg-white sm:dark:bg-[#0b0b0e] sm:border sm:border-slate-200/80 sm:dark:border-white/10 sm:rounded-[2.5rem] sm:overflow-hidden sm:shadow-[0_8px_35px_#0000000d] sm:dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col">
+                  
+                  {/* Header: Author Info */}
+                  <div className="py-3.5 sm:p-5 flex justify-between items-center sm:bg-slate-50 sm:dark:bg-white/[0.02] sm:border-b border-slate-100 dark:border-white/5">
+                    <div className="flex items-center gap-3.5 cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+                      <div className="w-11 h-11 rounded-full bg-linear-to-tr from-orange-500 to-red-500 p-[2px] shadow">
+                        <div className="w-full h-full bg-white dark:bg-[#0b0b0e] rounded-full flex items-center justify-center text-sm font-black text-slate-900 dark:text-white uppercase transition-colors">
+                          {post.authorName.charAt(0)}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-900 dark:text-white font-extrabold group-hover:text-blue-600 transition-colors leading-tight">{post.authorName}</p>
+                        <div className="flex gap-2.5 items-center">
+                          <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">{post.type}</p>
+                          <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700"></span>
+                          <p className="text-[11px] text-orange-500 dark:text-orange-400 font-bold uppercase tracking-wider">{post.cuisine}</p>
+                        </div>
                       </div>
                     </div>
+                    <button className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer p-2.5 rounded-full hover:bg-slate-200 dark:hover:bg-white/5 active:scale-90 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/></svg>
+                    </button>
+                  </div>
+
+                  {/* Media Area */}
+                  <div className={`-mx-5 w-[calc(100%+40px)] sm:mx-0 sm:w-full h-[23rem] sm:h-72 relative flex items-center justify-center cursor-pointer sm:overflow-hidden outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${!post.imageUrl ? `bg-linear-to-br ${post.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
+                    {post.imageUrl ? (
+                      <img src={post.imageUrl} alt={post.name} className="w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" />
+                    ) : (
+                      <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{post.emoji}</span>
+                    )}
+                    {/* Title Overlay */}
+                    <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/80 via-black/30 to-transparent p-5 pt-20">
+                      <h4 className="text-2xl font-extrabold text-white tracking-tight leading-tight drop-shadow">{post.name}</h4>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons & Details */}
+                  <div className="py-5 px-0 sm:p-6 flex-1 flex flex-col justify-between bg-transparent transition-colors z-10">
                     <div>
-                      <p className="text-sm text-slate-900 dark:text-white font-extrabold group-hover:text-blue-600 transition-colors leading-tight">{post.authorName}</p>
-                      <div className="flex gap-2.5 items-center">
-                        <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">{post.type}</p>
-                        <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700"></span>
-                        <p className="text-[11px] text-orange-500 dark:text-orange-400 font-bold uppercase tracking-wider">{post.cuisine}</p>
+                      <div className="flex items-center justify-between mb-5">
+                        <div className="flex items-center gap-7">
+                          
+                          {/* Like Button */}
+                          <button onClick={() => toggleLike(post.id)} className="group flex items-center gap-1.5 transition-transform active:scale-125 cursor-pointer outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+                            <svg 
+                              className={`w-8 h-8 transition-all duration-300 outline-none focus:outline-none ${
+                                post.is_liked 
+                                  ? 'fill-red-500 text-red-500 scale-110 drop-shadow-[0_0_8px_#ef444466]' 
+                                  : 'text-slate-500 dark:text-white group-hover:text-red-500'
+                              }`} 
+                              fill="none" 
+                              stroke="currentColor" 
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                            </svg>
+                            <span className={`text-sm font-extrabold ${post.is_liked ? 'text-red-500' : 'text-slate-800 dark:text-slate-100'}`}>
+                              {post.likesCount}
+                            </span>
+                          </button>
+
+                          {/* Comment Button */}
+                          <button onClick={() => openComments(post)} className="group flex items-center gap-1.5 text-slate-500 dark:text-white hover:text-blue-500 cursor-pointer transition-colors active:scale-95 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+                            <svg className="w-8 h-8 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                            </svg>
+                            <span className="text-sm font-extrabold text-slate-800 dark:text-slate-100 group-hover:text-blue-500 transition-colors">
+                              {post.commentsCount}
+                            </span>
+                          </button>
+
+                          {/* Share Button */}
+                          <button onClick={() => handleShare(post.name)} className="text-slate-500 dark:text-white hover:text-green-500 cursor-pointer active:scale-110 transition-transform outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+                            </svg>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  <button className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer p-2.5 rounded-full hover:bg-slate-200 dark:hover:bg-white/5 active:scale-90 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/></svg>
-                  </button>
-                </div>
 
-                {/* Media Area */}
-                <div className={`-mx-5 w-[calc(100%+40px)] sm:mx-0 sm:w-full h-[23rem] sm:h-72 relative flex items-center justify-center cursor-pointer sm:overflow-hidden outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${!post.imageUrl ? `bg-linear-to-br ${post.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
-                  {post.imageUrl ? (
-                    <img src={post.imageUrl} alt={post.name} className="w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" />
-                  ) : (
-                    <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{post.emoji}</span>
-                  )}
-                  {/* Title Overlay */}
-                  <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/80 via-black/30 to-transparent p-5 pt-20">
-                    <h4 className="text-2xl font-extrabold text-white tracking-tight leading-tight drop-shadow">{post.name}</h4>
-                  </div>
-                </div>
-
-                {/* Action Buttons & Details */}
-                <div className="py-5 px-0 sm:p-6 flex-1 flex flex-col justify-between bg-transparent transition-colors">
-                  <div>
-                    <div className="flex items-center justify-between mb-5">
-                      <div className="flex items-center gap-7">
-                        
-                        {/* Like Button */}
-                        <button onClick={() => toggleLike(post.id)} className="group flex items-center gap-1.5 transition-transform active:scale-125 cursor-pointer outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                          <svg 
-                            className={`w-8 h-8 transition-all duration-300 outline-none focus:outline-none ${
-                              post.is_liked 
-                                ? 'fill-red-500 text-red-500 scale-110 drop-shadow-[0_0_8px_#ef444466]' 
-                                : 'text-slate-500 dark:text-white group-hover:text-red-500'
-                            }`} 
-                            fill="none" 
-                            stroke="currentColor" 
-                            viewBox="0 0 24 24"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-                          </svg>
-                          <span className={`text-sm font-extrabold ${post.is_liked ? 'text-red-500' : 'text-slate-800 dark:text-slate-100'}`}>
-                            {post.likesCount}
-                          </span>
-                        </button>
-
-                        {/* Comment Button */}
-                        <button onClick={() => openComments(post)} className="group flex items-center gap-1.5 text-slate-500 dark:text-white hover:text-blue-500 cursor-pointer transition-colors active:scale-95 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                          <svg className="w-8 h-8 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-                          </svg>
-                          <span className="text-sm font-extrabold text-slate-800 dark:text-slate-100 group-hover:text-blue-500 transition-colors">
-                            {post.commentsCount}
-                          </span>
-                        </button>
-
-                        {/* Share Button */}
-                        <button onClick={() => handleShare(post.name)} className="text-slate-500 dark:text-white hover:text-green-500 cursor-pointer active:scale-110 transition-transform outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
-                          </svg>
-                        </button>
-                      </div>
+                      <p className="text-sm text-slate-700 dark:text-slate-300 font-medium leading-relaxed">
+                        <strong className="text-slate-900 dark:text-white mr-2.5 cursor-pointer hover:underline font-extrabold">{post.authorName}</strong> 
+                        This authentic <span className="text-orange-500 dark:text-orange-400 font-bold">{post.cuisine}</span> {post.type.toLowerCase()} masterpiece is trending right now! 🥘✨
+                      </p>
                     </div>
 
-                    <p className="text-sm text-slate-700 dark:text-slate-300 font-medium leading-relaxed">
-                      <strong className="text-slate-900 dark:text-white mr-2.5 cursor-pointer hover:underline font-extrabold">{post.authorName}</strong> 
-                      This authentic <span className="text-orange-500 dark:text-orange-400 font-bold">{post.cuisine}</span> {post.type.toLowerCase()} masterpiece is trending right now! 🥘✨
-                    </p>
+                    {/* Cook Now Button */}
+                    <button 
+                      onClick={() => openCookMode(post)} 
+                      className="mt-7 w-full bg-slate-950 dark:bg-white/5 hover:bg-orange-500 text-white font-extrabold py-4 rounded-xl transition-all duration-300 flex items-center justify-center gap-2.5 cursor-pointer group/btn shadow-[0_4px_15px_#00000033] dark:shadow-none active:scale-95 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]"
+                    >
+                      <span>Cook Now</span>
+                      <svg className="w-4.5 h-4.5 opacity-70 group-hover/btn:opacity-100 group-hover/btn:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+                    </button>
                   </div>
 
-                  {/* Cook Now Button */}
-                  <button 
-                    onClick={() => openCookMode(post)} 
-                    className="mt-7 w-full bg-slate-950 dark:bg-white/5 hover:bg-orange-500 text-white font-extrabold py-4 rounded-xl transition-all duration-300 flex items-center justify-center gap-2.5 cursor-pointer group/btn shadow-[0_4px_15px_#00000033] dark:shadow-none active:scale-95 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]"
-                  >
-                    <span>Cook Now</span>
-                    <svg className="w-4.5 h-4.5 opacity-70 group-hover/btn:opacity-100 group-hover/btn:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
-                  </button>
+                  {/* Laptop View: Premium bottom highlight line that glows on hover */}
+                  <div className="hidden sm:block absolute bottom-0 left-0 w-full h-[4px] bg-linear-to-r from-transparent via-orange-500/70 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-700"></div>
 
                 </div>
+
+                {/* 🔥 THE PERFECTLY CENTERED MOBILE LINE */}
+                {/* Condition: Sirf tabhi line aayegi jab ye post sabse aakhri nahi hai */}
+                {index !== filteredPosts.length - 1 ? (
+                  <div className="sm:hidden py-10 flex items-center justify-center gap-4 w-[80%] mx-auto opacity-70">
+                    <div className="h-[1.5px] flex-1 bg-linear-to-r from-transparent via-slate-300 dark:via-slate-600 to-transparent rounded-full"></div>
+                    <div className="flex gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                    </div>
+                    <div className="h-[1.5px] flex-1 bg-linear-to-l from-transparent via-slate-300 dark:via-slate-600 to-transparent rounded-full"></div>
+                  </div>
+                ) : (
+                  <div className="sm:hidden h-6"></div>
+                )}
+
               </div>
             ))}
           </div>
