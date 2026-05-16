@@ -4,13 +4,26 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 
+// ─── TYPES ────────────────────────────────────────────────
 interface HomeTabProps {
   user: any;
 }
 
-interface CommentData {
+interface CommentReply {
+  id: string;
   author: string;
+  avatar_url?: string;
   text: string;
+  created_at?: string;
+}
+
+interface CommentData {
+  id: string;
+  author: string;
+  avatar_url?: string;
+  text: string;
+  replies: CommentReply[];
+  created_at?: string;
 }
 
 interface FeedPost {
@@ -23,6 +36,7 @@ interface FeedPost {
   imageUrl?: string;
   authorName: string;
   authorId?: string;
+  authorAvatar?: string;
   likesCount: number;
   commentsCount: number;
   cuisine: string;
@@ -34,9 +48,11 @@ interface FeedPost {
   difficulty: string;
 }
 
+// ─── COMPONENT ────────────────────────────────────────────
 export default function HomeTab({ user }: HomeTabProps) {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [trendingChefs, setTrendingChefs] = useState<any[]>([]);
+  const [myProfile, setMyProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   const [alertModal, setAlertModal] = useState({ isOpen: false, message: "" });
@@ -45,6 +61,7 @@ export default function HomeTab({ user }: HomeTabProps) {
   const [activeCommentsPost, setActiveCommentsPost] = useState<FeedPost | null>(null);
   const [commentInput, setCommentInput] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false); 
+  const [replyingTo, setReplyingTo] = useState<{ id: string, author: string } | null>(null);
 
   const [cookModePost, setCookModePost] = useState<FeedPost | null>(null);
   const [portions, setPortions] = useState(1);
@@ -102,34 +119,64 @@ export default function HomeTab({ user }: HomeTabProps) {
 
   const syncMyProfile = async () => {
     if (!user) return;
-    const { data } = await supabase.from("profiles").select("id, username").eq("id", user.id).single();
+    const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+    
     if (!data) {
       const rawName = user.user_metadata?.full_name || "Chef Zestly";
       const baseUsername = user.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') : "zestly";
       const randomDigits = Math.floor(1000 + Math.random() * 9000);
       const finalUsername = user.user_metadata?.username || `${baseUsername}_${randomDigits}`;
 
-      await supabase.from("profiles").insert({
+      await supabase.from("profiles").upsert({
         id: user.id,
         full_name: rawName,
         username: finalUsername, 
         bio: "Passionate Chef at Zestly 🍳"
       });
+      
+      const { data: newProfile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+      if (newProfile) setMyProfile(newProfile);
+    } else {
+      setMyProfile(data);
     }
   };
 
   const fetchFeedAndChefs = async () => {
-    const { data: recipesData, error } = await supabase
+    // 🔥 SAFE FETCH: Fetch recipes without risky joins
+    const { data: recipesData, error: recipesError } = await supabase
       .from("recipes")
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (error) console.error("Error fetching recipes:", error);
+    if (recipesError) console.error("Error fetching recipes:", recipesError);
 
-    if (!error && recipesData) {
+    // 🔥 SAFE FETCH: Fetch profiles to map avatars manually
+    const { data: profilesData } = await supabase.from("profiles").select("*");
+    
+    // Create a dictionary for quick avatar lookup
+    const profileMap = new Map();
+    if (profilesData) {
+      profilesData.forEach(p => profileMap.set(p.id, p));
+    }
+
+    if (!recipesError && recipesData) {
       const formattedPosts: FeedPost[] = recipesData.map((item, index) => {
         const mockCuisines = ["Indian", "Italian", "Mexican", "Chinese", "Desserts"];
         const assignedCuisine = mockCuisines[index % mockCuisines.length];
+
+        const safeComments: CommentData[] = (item.comments_data || []).map((c: any, i: number) => ({
+          id: c.id || `legacy_${i}_${Date.now()}`,
+          author: c.author || "Chef",
+          avatar_url: c.avatar_url || null,
+          text: c.text || "",
+          replies: c.replies || [],
+          created_at: c.created_at || new Date().toISOString()
+        }));
+
+        const totalComments = safeComments.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0);
+        
+        // Grab author details safely from frontend map
+        const authorProfile = profileMap.get(item.author_id);
 
         return {
           id: item.id,
@@ -141,9 +188,10 @@ export default function HomeTab({ user }: HomeTabProps) {
           imageUrl: item.image_url,
           authorName: item.author_name || "Chef Zestly", 
           authorId: item.author_id || item.user_id,
+          authorAvatar: authorProfile?.avatar_url || null, // Safely mapped!
           likesCount: item.likes_count || 0,
-          commentsList: item.comments_data || [], 
-          commentsCount: item.comments_data ? item.comments_data.length : 0,
+          commentsList: safeComments, 
+          commentsCount: totalComments,
           cuisine: assignedCuisine,
           ingredients: item.ingredients || ["Secret Magic Ingredient"],
           steps: item.steps || ["Mix everything.", "Cook well and serve hot!"],
@@ -155,9 +203,8 @@ export default function HomeTab({ user }: HomeTabProps) {
       setPosts(formattedPosts);
     }
 
-    const { data: profilesData } = await supabase.from("profiles").select("*").limit(10);
     if (profilesData && profilesData.length > 0) {
-      setTrendingChefs(profilesData);
+      setTrendingChefs(profilesData.slice(0, 10));
     } else {
       setTrendingChefs([
         { id: "mock1", full_name: "Chef Zestly", followers: 12500 }, 
@@ -202,6 +249,7 @@ export default function HomeTab({ user }: HomeTabProps) {
       full_name: profileData?.full_name || fallbackName,
       username: profileData?.username || `zestly_${chefId.substring(0, 4)}`,
       bio: profileData?.bio || "Passionate Chef at Zestly 🍳",
+      avatar_url: profileData?.avatar_url || null,
       followersCount: followersCount || 0,
       followingCount: followingCount || 0,
       postsCount: chefPosts.length
@@ -275,6 +323,7 @@ export default function HomeTab({ user }: HomeTabProps) {
   const openComments = (post: FeedPost) => {
     if (!checkAuth()) return;
     setActiveCommentsPost(post);
+    setReplyingTo(null);
   };
 
   const submitComment = async () => {
@@ -283,11 +332,32 @@ export default function HomeTab({ user }: HomeTabProps) {
     if (!text) return;
 
     setIsSubmittingComment(true); 
-    const currentUserName = user?.user_metadata?.full_name?.split(" ")[0] || "Zestly"; 
-    const newComment = { author: currentUserName, text: text };
-    const newCommentsList = [...activeCommentsPost.commentsList, newComment];
+    const currentUserName = myProfile?.full_name?.split(" ")[0] || user?.user_metadata?.full_name?.split(" ")[0] || "Chef"; 
+    
+    const newEntry = {
+      id: Date.now().toString(),
+      author: currentUserName,
+      avatar_url: myProfile?.avatar_url || null,
+      text: text,
+      created_at: new Date().toISOString(),
+      replies: []
+    };
 
-    const updatedPost = { ...activeCommentsPost, commentsCount: newCommentsList.length, commentsList: newCommentsList };
+    let newCommentsList = [...activeCommentsPost.commentsList];
+
+    if (replyingTo) {
+      newCommentsList = newCommentsList.map(cmt => {
+        if (cmt.id === replyingTo.id) {
+          return { ...cmt, replies: [...(cmt.replies || []), newEntry] };
+        }
+        return cmt;
+      });
+    } else {
+      newCommentsList.push(newEntry);
+    }
+
+    const totalComments = newCommentsList.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0);
+    const updatedPost = { ...activeCommentsPost, commentsCount: totalComments, commentsList: newCommentsList };
     
     const { error } = await supabase.from("recipes").update({ comments_data: newCommentsList }).eq("id", activeCommentsPost.id);
 
@@ -295,7 +365,8 @@ export default function HomeTab({ user }: HomeTabProps) {
       setPosts(posts.map(p => p.id === activeCommentsPost.id ? updatedPost : p));
       setActiveCommentsPost(updatedPost);
       setCommentInput("");
-      showToast("Comment posted! 💬");
+      setReplyingTo(null);
+      showToast(replyingTo ? "Reply posted! 💬" : "Comment posted! 💬");
     } else {
       showToast("Failed to post comment. Check DB!");
     }
@@ -364,8 +435,12 @@ export default function HomeTab({ user }: HomeTabProps) {
             {trendingChefs.map((chef, i, arr) => (
               <div key={i} onClick={() => openChefProfile(chef.id, chef.full_name)} className={`flex flex-col items-center shrink-0 snap-start cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${i === 0 ? "ml-5 sm:ml-1" : ""} ${i === arr.length - 1 ? "mr-5 sm:mr-1" : ""}`}>
                 <div className="relative w-16 h-16 sm:w-[76px] sm:h-[76px] rounded-full p-[3px] bg-linear-to-tr from-orange-500 via-red-500 to-purple-500 group-hover:scale-105 group-active:scale-95 transition-all duration-300 shadow-md mb-2">
-                  <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white border-[3px] border-white dark:border-[#07070a] transition-colors">
-                    {chef.full_name.charAt(0)}
+                  <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white border-[3px] border-white dark:border-[#07070a] transition-colors overflow-hidden">
+                    {chef.avatar_url ? (
+                      <img src={chef.avatar_url} className="w-full h-full object-cover" alt={chef.full_name} />
+                    ) : (
+                      chef.full_name.charAt(0).toUpperCase()
+                    )}
                   </div>
                   <div className="absolute bottom-0 right-0 bg-orange-500 w-4 h-4 sm:w-5 sm:h-5 rounded-full border-2 border-white dark:border-[#07070a] flex items-center justify-center">
                     <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" fill="none" stroke="currentColor" strokeWidth="4" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
@@ -404,7 +479,9 @@ export default function HomeTab({ user }: HomeTabProps) {
               <div className="flex flex-col gap-4 mt-4">
                 {searchedChefs.map((chef, i) => (
                   <div key={i} onClick={() => openChefProfile(chef.id, chef.full_name)} className="flex items-center gap-4 bg-white dark:bg-[#1c1c1e] p-4 rounded-[1.5rem] border border-slate-200 dark:border-white/5 cursor-pointer shadow-sm active:scale-95 transition-all">
-                    <div className="w-14 h-14 rounded-full bg-linear-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-xl font-bold">{chef.full_name.charAt(0)}</div>
+                    <div className="w-14 h-14 rounded-full bg-linear-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-xl font-bold overflow-hidden">
+                      {chef.avatar_url ? <img src={chef.avatar_url} className="w-full h-full object-cover" /> : chef.full_name.charAt(0).toUpperCase()}
+                    </div>
                     <div>
                       <h4 className="font-extrabold text-slate-900 dark:text-white text-base">{chef.full_name}</h4>
                       <p className="text-xs text-slate-500 font-medium">@{chef.username || `zestly_${chef.id.substring(0, 4)}`} • View Profile</p>
@@ -437,7 +514,9 @@ export default function HomeTab({ user }: HomeTabProps) {
                       <div className="flex flex-col gap-3">
                         {searchedChefs.slice(0, 3).map((chef, i) => (
                           <div key={i} onClick={() => openChefProfile(chef.id, chef.full_name)} className="flex items-center gap-4 bg-white dark:bg-[#1c1c1e] p-3 rounded-[1.2rem] border border-slate-200 dark:border-white/5 cursor-pointer shadow-sm active:scale-95 transition-all">
-                            <div className="w-12 h-12 rounded-full bg-linear-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-lg font-bold">{chef.full_name.charAt(0)}</div>
+                            <div className="w-12 h-12 rounded-full bg-linear-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-lg font-bold overflow-hidden">
+                              {chef.avatar_url ? <img src={chef.avatar_url} className="w-full h-full object-cover" /> : chef.full_name.charAt(0).toUpperCase()}
+                            </div>
                             <div>
                               <h4 className="font-extrabold text-slate-900 dark:text-white text-sm">{chef.full_name}</h4>
                               <p className="text-xs text-slate-500 font-medium">@{chef.username || `zestly_${chef.id.substring(0, 4)}`}</p>
@@ -518,38 +597,34 @@ export default function HomeTab({ user }: HomeTabProps) {
             ) : filteredPosts.length === 0 ? (
               <div className="text-center py-16 px-6 border-2 border-dashed border-slate-300 dark:border-white/10 rounded-[2.5rem] bg-white dark:bg-white/[0.01] mx-4"><p className="text-slate-500 dark:text-slate-400 font-medium text-sm">No recipes found!</p></div>
             ) : (
-              // 🚀 MOBILE FEED GRID: gap-0 for mobile (chipke hue posts), gap-7 for laptop
               <div className="flex flex-col gap-0 sm:grid sm:grid-cols-2 sm:gap-7 pb-4">
-                {filteredPosts.map((post, index) => (
-                  // 🚀 MOBILE CARD WRAPPER: thick bottom border for separation, no side margins
+                {filteredPosts.map((post) => (
                   <div key={post.id} className="flex flex-col w-full border-b-[8px] sm:border-b-0 border-slate-100 dark:border-[#121216] sm:bg-transparent">
                     
-                    {/* 🚀 CARD CONTAINER: Mobile par square/edge-to-edge (no radius), Desktop par rounded cards */}
                     <div className="relative bg-white dark:bg-[#0b0b0e] border-y sm:border border-slate-200/80 dark:border-white/10 rounded-none sm:rounded-[2.5rem] overflow-hidden shadow-none sm:shadow-md dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col">
                       
                       {/* Author Header */}
                       <div className="py-3 px-4 sm:p-5 flex justify-between items-center bg-transparent border-b border-slate-100 dark:border-white/5 z-10">
                         <div onClick={() => openChefProfile(post.authorId || "mock", post.authorName)} className="flex items-center gap-3 cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
                           <div className="w-9 h-9 rounded-full bg-linear-to-tr from-orange-500 to-red-500 p-[2px] shadow">
-                            <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-xs font-black text-slate-900 dark:text-white uppercase transition-colors">{post.authorName.charAt(0)}</div>
+                            <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-xs font-black text-slate-900 dark:text-white uppercase transition-colors overflow-hidden">
+                              {post.authorAvatar ? <img src={post.authorAvatar} className="w-full h-full object-cover" /> : post.authorName.charAt(0).toUpperCase()}
+                            </div>
                           </div>
                           <div className="flex flex-col">
                             <p className="text-sm text-slate-900 dark:text-white font-bold transition-colors leading-tight group-hover:underline">{post.authorName}</p>
                             <p className="text-[10px] text-slate-500 font-medium">Zestly Chef</p>
                           </div>
                         </div>
-                        {/* 3 dots icon for more options */}
                         <button className="text-slate-400 hover:text-slate-600 dark:hover:text-white outline-none [-webkit-tap-highlight-color:transparent]">
                           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm-7 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm14 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>
                         </button>
                       </div>
 
-                      {/* 🚀 Image Area: Mobile par aspect-square (Instagram style 1:1), Desktop par fixed height */}
                       <div onClick={() => openCookMode(post)} className={`w-full aspect-square sm:aspect-auto sm:h-72 relative flex items-center justify-center cursor-pointer sm:overflow-hidden outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${!post.imageUrl ? `bg-linear-to-br ${post.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
                         {post.imageUrl ? <img src={post.imageUrl} className="w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" /> : <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{post.emoji}</span>}
                       </div>
 
-                      {/* Engagement Actions & Text */}
                       <div className="pt-3 pb-5 px-4 sm:p-5 flex-1 flex flex-col justify-between bg-transparent transition-colors z-10">
                         <div>
                           <div className="flex items-center justify-between mb-2">
@@ -567,7 +642,6 @@ export default function HomeTab({ user }: HomeTabProps) {
                                 <svg className="w-7 h-7 text-slate-900 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
                               </button>
                             </div>
-                            {/* Save Icon (Decorative) */}
                             <button className="text-slate-900 dark:text-white outline-none active:scale-95 transition-transform">
                               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
                             </button>
@@ -608,8 +682,8 @@ export default function HomeTab({ user }: HomeTabProps) {
             <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               <div className="px-6 py-8 flex flex-col sm:flex-row items-start sm:items-center gap-6 sm:gap-10">
                 <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-linear-to-tr from-orange-500 to-red-500 p-1 shrink-0">
-                  <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-4xl sm:text-5xl font-black text-slate-900 dark:text-white uppercase">
-                    {viewingChef.full_name.charAt(0)}
+                  <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-4xl sm:text-5xl font-black text-slate-900 dark:text-white uppercase overflow-hidden">
+                    {viewingChef.avatar_url ? <img src={viewingChef.avatar_url} className="w-full h-full object-cover" /> : viewingChef.full_name.charAt(0).toUpperCase()}
                   </div>
                 </div>
                 
@@ -675,27 +749,69 @@ export default function HomeTab({ user }: HomeTabProps) {
               <h3 className="text-base font-bold text-slate-900 dark:text-white">Comments</h3>
               <button onClick={() => setActiveCommentsPost(null)} className="cursor-pointer text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 w-9 h-9 rounded-full flex items-center justify-center transition-colors">✕</button>
             </div>
-            <div className="flex-1 p-6 overflow-y-auto">
+            
+            <div className="flex-1 p-6 overflow-y-auto [&::-webkit-scrollbar]:hidden">
                {activeCommentsPost.commentsList.length === 0 ? (
                  <p className="text-center text-slate-500 mt-10">No comments yet. Be the first!</p>
                ) : (
-                 <div className="flex flex-col gap-4">
-                   {activeCommentsPost.commentsList.map((cmt, idx) => (
-                     <div key={idx} className="flex gap-3">
-                       <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold shrink-0">{cmt.author.charAt(0)}</div>
-                       <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-2xl rounded-tl-none w-full">
-                         <p className="font-bold text-xs text-slate-900 dark:text-white mb-1">{cmt.author}</p>
-                         <p className="text-sm text-slate-700 dark:text-slate-300">{cmt.text}</p>
+                 <div className="flex flex-col gap-5">
+                   {activeCommentsPost.commentsList.map((cmt) => (
+                     <div key={cmt.id} className="flex flex-col gap-3">
+                       
+                       {/* Main Comment */}
+                       <div className="flex gap-3">
+                         <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold shrink-0 overflow-hidden">
+                           {cmt.avatar_url ? <img src={cmt.avatar_url} className="w-full h-full object-cover" /> : cmt.author.charAt(0).toUpperCase()}
+                         </div>
+                         <div className="w-full">
+                           <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-2xl rounded-tl-none w-fit min-w-[120px] max-w-full">
+                             <p className="font-bold text-xs text-slate-900 dark:text-white mb-0.5">{cmt.author}</p>
+                             <p className="text-sm text-slate-700 dark:text-slate-300 break-words">{cmt.text}</p>
+                           </div>
+                           <button onClick={() => setReplyingTo({ id: cmt.id, author: cmt.author })} className="text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 mt-1.5 ml-2 transition-colors outline-none cursor-pointer">
+                             Reply
+                           </button>
+                         </div>
                        </div>
+
+                       {/* Replies */}
+                       {cmt.replies && cmt.replies.length > 0 && (
+                         <div className="flex flex-col gap-3 ml-11">
+                           {cmt.replies.map(reply => (
+                             <div key={reply.id} className="flex gap-2">
+                               <div className="w-6 h-6 rounded-full bg-slate-300 dark:bg-slate-700 flex items-center justify-center text-white text-[10px] font-bold shrink-0 overflow-hidden">
+                                 {reply.avatar_url ? <img src={reply.avatar_url} className="w-full h-full object-cover" /> : reply.author.charAt(0).toUpperCase()}
+                               </div>
+                               <div className="w-full">
+                                 <div className="bg-slate-50 dark:bg-white/5 px-3 py-2 rounded-2xl rounded-tl-none w-fit min-w-[100px] max-w-full">
+                                   <p className="font-bold text-[11px] text-slate-900 dark:text-white">{reply.author}</p>
+                                   <p className="text-[13px] text-slate-700 dark:text-slate-300 break-words">{reply.text}</p>
+                                 </div>
+                               </div>
+                             </div>
+                           ))}
+                         </div>
+                       )}
+
                      </div>
                    ))}
                  </div>
                )}
             </div>
+
+            {/* Replying Status Bar */}
+            {replyingTo && (
+              <div className="shrink-0 px-6 py-2 bg-slate-100 dark:bg-[#252528] flex justify-between items-center border-t border-slate-200 dark:border-white/10">
+                <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Replying to {replyingTo.author}...</span>
+                <button onClick={() => setReplyingTo(null)} className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white cursor-pointer">Cancel</button>
+              </div>
+            )}
+
+            {/* Input Box */}
             <div className="shrink-0 p-4 border-t border-slate-100 dark:border-white/10 flex gap-3 items-center">
                <input 
                  type="text" 
-                 placeholder="Add a comment..." 
+                 placeholder={replyingTo ? "Write a reply..." : "Add a comment..."} 
                  value={commentInput} 
                  onChange={(e) => setCommentInput(e.target.value)} 
                  className="flex-1 bg-slate-100 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-full px-5 py-3.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-orange-400" 
