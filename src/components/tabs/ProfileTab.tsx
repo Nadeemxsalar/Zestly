@@ -14,6 +14,8 @@ export default function ProfileTab({ user }: { user: any }) {
   // --- USER DATA STATES ---
   const [profile, setProfile] = useState<any>(null);
   const [myPosts, setMyPosts] = useState<any[]>([]);
+  const [savedPosts, setSavedPosts] = useState<any[]>([]); // 🚀 NEW: Saved Posts arrays state
+  const [savedRecipeIds, setSavedRecipeIds] = useState<string[]>([]); // 🚀 NEW: Tracker list
   const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0 });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -81,6 +83,16 @@ export default function ProfileTab({ user }: { user: any }) {
       setEditName(profileData.full_name || "");
       setEditUsername(profileData.username || "");
       setEditBio(profileData.bio || "");
+
+      // 🚀 NEW: Load Saved Recipes from DB
+      const savedIds = profileData.saved_recipes || [];
+      setSavedRecipeIds(savedIds);
+      if (savedIds.length > 0) {
+        const { data: sRecipes } = await supabase.from("recipes").select("*").in("id", savedIds);
+        if (sRecipes) setSavedPosts(sRecipes);
+      } else {
+        setSavedPosts([]);
+      }
     }
 
     const { data: recipes } = await supabase.from("recipes").select("*").eq("author_id", user.id).order("created_at", { ascending: false });
@@ -94,6 +106,17 @@ export default function ProfileTab({ user }: { user: any }) {
     
     setStats((prev: any) => ({ ...prev, followers: followersCount || 0, following: followingCount || 0 }));
     setIsLoading(false);
+  };
+
+  // 🚀 NEW: Unsave recipe logic directly from profile vault
+  const handleUnsave = async (e: React.MouseEvent, recipeId: string) => {
+    e.stopPropagation();
+    const newSavedIds = savedRecipeIds.filter(id => id !== recipeId);
+    setSavedRecipeIds(newSavedIds);
+    setSavedPosts(savedPosts.filter(p => p.id !== recipeId)); // Remove item visually instantly
+    
+    await supabase.from("profiles").update({ saved_recipes: newSavedIds }).eq("id", user.id);
+    showToast("Removed from Vault 🔓");
   };
 
   // --- 🚀 NEW IMAGE HANDLING FLOW ---
@@ -196,7 +219,7 @@ export default function ProfileTab({ user }: { user: any }) {
         if (pendingAvatarPreview) URL.revokeObjectURL(pendingAvatarPreview);
         setPendingAvatarPreview(null);
         
-        showToast("Profile Saved Successfully! ✨✅");
+        showToast("Profile Saved Successfully! ✨fake✅");
         setIsEditOpen(false); 
 
     } catch (error: any) {
@@ -369,13 +392,43 @@ export default function ProfileTab({ user }: { user: any }) {
         </div>
       )}
 
+      {/* 🚀 UPGRADED REAL SAVED VAULT SECTION */}
       {activeTab === "saved" && (
         <div className="px-5 sm:px-6">
-          <div className="text-center py-24 bg-white dark:bg-white/[0.02] border border-dashed border-slate-200 dark:border-white/10 rounded-[2rem] mt-2">
-            <span className="text-4xl block mb-4 opacity-50">🔒</span>
-            <p className="font-bold text-slate-900 dark:text-white text-lg">Private Vault</p>
-            <p className="text-slate-500 text-sm mt-1">Only you can see what you've saved.</p>
-          </div>
+          {savedPosts.length === 0 ? (
+            <div className="text-center py-24 bg-white dark:bg-white/[0.02] border border-dashed border-slate-200 dark:border-white/10 rounded-[2rem] mt-2">
+              <span className="text-4xl block mb-4 opacity-50">🔒</span>
+              <p className="font-bold text-slate-900 dark:text-white text-lg">Private Vault</p>
+              <p className="text-slate-500 text-sm mt-1">Only you can see what you've saved.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {savedPosts.map((post) => (
+                <div key={post.id} className="aspect-square relative cursor-pointer group bg-slate-100 dark:bg-[#121216] rounded-[1.5rem] overflow-hidden shadow-sm hover:shadow-lg transition-all">
+                  {post.image_url ? (
+                    <img src={post.image_url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                  ) : (
+                    <div className={`w-full h-full bg-linear-to-br ${post.gradient || activeTheme.from} flex items-center justify-center group-hover:scale-110 transition-transform duration-700`}>
+                      <span className="text-4xl sm:text-6xl drop-shadow-lg">{post.emoji || '🍲'}</span>
+                    </div>
+                  )}
+                  {/* Premium Hover Overlay for Unsaving */}
+                  <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 text-white font-black transition-all duration-300">
+                    <span className="flex items-center gap-1.5 text-lg">
+                      <svg className="w-6 h-6 fill-white" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> 
+                      {post.likes_count || 0}
+                    </span>
+                    <button 
+                      onClick={(e) => handleUnsave(e, post.id)} 
+                      className="mt-2 text-xs bg-white/20 hover:bg-white/40 px-3 py-1.5 rounded-full backdrop-blur-md outline-none cursor-pointer active:scale-95 transition-all"
+                    >
+                      Remove 🗑️
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

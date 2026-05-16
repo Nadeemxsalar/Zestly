@@ -64,6 +64,7 @@ export default function HomeTab({ user }: HomeTabProps) {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [trendingChefs, setTrendingChefs] = useState<any[]>([]);
   const [myProfile, setMyProfile] = useState<any>(null);
+  const [savedRecipeIds, setSavedRecipeIds] = useState<string[]>([]); // 🚀 NEW: Saved State
   const [isLoading, setIsLoading] = useState(true);
   
   const [alertModal, setAlertModal] = useState({ isOpen: false, message: "" });
@@ -147,9 +148,13 @@ export default function HomeTab({ user }: HomeTabProps) {
       });
       
       const { data: newProfile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-      if (newProfile) setMyProfile(newProfile);
+      if (newProfile) {
+        setMyProfile(newProfile);
+        setSavedRecipeIds(newProfile.saved_recipes || []); // 🚀 Sync DB save to state
+      }
     } else {
       setMyProfile(data);
+      setSavedRecipeIds(data.saved_recipes || []); // 🚀 Sync DB save to state
     }
   };
 
@@ -235,6 +240,23 @@ export default function HomeTab({ user }: HomeTabProps) {
       return false;
     }
     return true;
+  };
+
+  // 🚀 NEW: Save Recipe Logic
+  const toggleSave = async (recipeId: string) => {
+    if (!checkAuth()) return;
+    const isAlreadySaved = savedRecipeIds.includes(recipeId);
+    
+    // Update local UI state immediately for snap feel
+    const updatedSavedIds = isAlreadySaved 
+      ? savedRecipeIds.filter(id => id !== recipeId) 
+      : [...savedRecipeIds, recipeId];
+      
+    setSavedRecipeIds(updatedSavedIds);
+    showToast(isAlreadySaved ? "Removed from Vault 🔓" : "Saved to Private Vault 🔒✨");
+
+    // Update Supabase Database
+    await supabase.from("profiles").update({ saved_recipes: updatedSavedIds }).eq("id", user.id);
   };
 
   const openChefProfile = async (chefId: string, fallbackName: string) => {
@@ -323,9 +345,24 @@ export default function HomeTab({ user }: HomeTabProps) {
     }
   };
 
-  const handleShare = (postName: string) => {
-    navigator.clipboard.writeText(`Zestly Recipe: ${postName}`);
-    showToast(`Link for ${postName} copied! 🚀`);
+  // 🚀 NEW: Advanced Native Share Logic
+  const handleShare = async (postName: string) => {
+    const shareUrl = window.location.href;
+    const shareTitle = `Zestly Recipe: ${postName}`;
+    const shareText = `Look at this amazing ${postName} recipe I found on Zestly! 🥘✨\n\n`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
+        showToast("Shared successfully! 🚀");
+        return;
+      } catch (err) {
+        console.log("Share sheet cancelled.");
+      }
+    }
+    // Fallback to copy link
+    navigator.clipboard.writeText(`${shareText}${shareUrl}`);
+    showToast(`Link copied to clipboard! 📋`);
   };
 
   const openComments = (post: FeedPost) => {
@@ -334,7 +371,6 @@ export default function HomeTab({ user }: HomeTabProps) {
     setReplyingTo(null);
   };
 
-  // 🚀 FIXED: Robust Comment & Reply System
   const submitComment = async () => {
     if (!checkAuth() || !activeCommentsPost) return;
     const text = commentInput.trim();
@@ -662,8 +698,9 @@ export default function HomeTab({ user }: HomeTabProps) {
                                 <svg className="w-7 h-7 text-slate-900 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
                               </button>
                             </div>
-                            <button className="text-slate-900 dark:text-white outline-none active:scale-95 transition-transform">
-                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+                            {/* 🚀 UPGRADED SAVE BUTTON */}
+                            <button onClick={() => toggleSave(post.id)} className={`outline-none active:scale-90 transition-all duration-300 ${savedRecipeIds.includes(post.id) ? 'text-orange-500' : 'text-slate-900 dark:text-white'}`}>
+                              <svg className="w-7 h-7" fill={savedRecipeIds.includes(post.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
                             </button>
                           </div>
                           
@@ -951,7 +988,7 @@ export default function HomeTab({ user }: HomeTabProps) {
       )}
 
       {mounted && toast.isOpen && createPortal(
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[99999] pointer-events-none">
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100000] pointer-events-none">
           <div className="bg-slate-900 dark:bg-[#1c1c1e] text-white px-6 py-3.5 rounded-full shadow-lg text-sm font-bold border border-slate-700 dark:border-white/10">{toast.message}</div>
         </div>, document.body
       )}
