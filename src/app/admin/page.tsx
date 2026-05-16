@@ -123,7 +123,7 @@ export default function ZestlyAdminPage() {
         { data: profilesData },
         { data: recipesData },
         { data: notifsData },
-        { count: vegCount }, // 🔥 FIX: Extracting 'count' instead of 'data'
+        { count: vegCount },
       ] = await Promise.all([
         supabase.from("profiles").select("*", { count: "exact", head: true }),
         supabase.from("recipes").select("*", { count: "exact", head: true }),
@@ -217,8 +217,8 @@ export default function ZestlyAdminPage() {
         totalPantryItems: totalPantryItems || 0,
         newUsersToday: newUsersToday || 0,
         newRecipesToday: newRecipesToday || 0,
-        vegCount: vegCount || 0, // 🔥 FIX: Properly mapped to the extracted count variable
-        nonVegCount: (totalRecipes || 0) - (vegCount || 0), // 🔥 FIX: No TS errors here anymore
+        vegCount: vegCount || 0,
+        nonVegCount: (totalRecipes || 0) - (vegCount || 0),
         storagePercent: Math.min(100, Math.round(((totalRecipes || 0) * 0.15) % 100)),
       });
     } catch (err) {
@@ -227,16 +227,27 @@ export default function ZestlyAdminPage() {
     setIsRefreshing(false);
   }, []);
 
-  // ── Auth Check ─────────────────────────────────────────
+  // ── 🚀 STRICT SECURITY: Auth & Email Check ────────────────────────────
   useEffect(() => {
     const init = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
+      
       if (session?.user) {
-        setAdminUser(session.user);
-        await fetchDashboardData();
+        const userEmail = session.user.email?.toLowerCase();
+        // 🔒 ALLOWED ADMIN EMAILS
+        const allowedAdmins = ["nadeemxsalar@gmail.com", "realheronadeem@gmail.com"];
+
+        if (userEmail && allowedAdmins.includes(userEmail)) {
+          // 🎉 Access Granted
+          setAdminUser(session.user);
+          await fetchDashboardData();
+        } else {
+          // 🛑 Access Denied
+          alert("Access Denied: You are not authorized to view the Admin Panel! 🛑");
+          router.push("/");
+        }
       } else {
+        // Not logged in
         router.push("/login");
       }
       setIsLoading(false);
@@ -292,11 +303,14 @@ export default function ZestlyAdminPage() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#07070a] gap-4">
         <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full animate-spin shadow-[0_0_20px_rgba(249,115,22,0.5)]"></div>
         <p className="text-orange-400 font-bold animate-pulse tracking-widest text-sm uppercase">
-          Loading Admin...
+          Verifying Admin...
         </p>
       </div>
     );
   }
+
+  // Agar galti se render ho jaye par admin na ho, return null
+  if (!adminUser) return null;
 
   const initial =
     adminUser?.user_metadata?.full_name?.charAt(0).toUpperCase() ||
