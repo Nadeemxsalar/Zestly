@@ -354,7 +354,7 @@ export default function HomeTab({ user }: HomeTabProps) {
         )}
       </div>
 
-      {/* 🚀 TRENDING CHEFS - MOVED DIRECTLY BELOW SEARCH BAR */}
+      {/* TRENDING CHEFS */}
       {!isSearchActive && trendingChefs.length > 0 && (
         <div className="w-full max-w-5xl pt-2">
           <div className="flex items-center justify-between mb-2 px-5 sm:px-1">
@@ -378,7 +378,7 @@ export default function HomeTab({ user }: HomeTabProps) {
         </div>
       )}
 
-      {/* INSTAGRAM STYLE TABS FOR SEARCH */}
+      {/* SEARCH TABS */}
       {isSearchActive && (
         <div className="w-full max-w-5xl px-4 sm:px-1 mt-2">
           <div className="flex gap-6 sm:gap-8 border-b border-slate-200 dark:border-white/10 px-2 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
@@ -518,29 +518,39 @@ export default function HomeTab({ user }: HomeTabProps) {
             ) : filteredPosts.length === 0 ? (
               <div className="text-center py-16 px-6 border-2 border-dashed border-slate-300 dark:border-white/10 rounded-[2.5rem] bg-white dark:bg-white/[0.01] mx-4"><p className="text-slate-500 dark:text-slate-400 font-medium text-sm">No recipes found!</p></div>
             ) : (
-              <div className="flex flex-col gap-6 sm:grid sm:grid-cols-2 sm:gap-7 pb-4">
+              // 🚀 MOBILE FEED GRID: gap-0 for mobile (chipke hue posts), gap-7 for laptop
+              <div className="flex flex-col gap-0 sm:grid sm:grid-cols-2 sm:gap-7 pb-4">
                 {filteredPosts.map((post, index) => (
-                  <div key={post.id} className="flex flex-col w-full px-2 sm:px-0">
-                    {/* 🚀 Mobile UI Premium Card Update */}
-                    <div className="relative bg-white dark:bg-[#0b0b0e] border border-slate-200/80 dark:border-white/10 rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden shadow-md dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col mx-2 sm:mx-0">
+                  // 🚀 MOBILE CARD WRAPPER: thick bottom border for separation, no side margins
+                  <div key={post.id} className="flex flex-col w-full border-b-[8px] sm:border-b-0 border-slate-100 dark:border-[#121216] sm:bg-transparent">
+                    
+                    {/* 🚀 CARD CONTAINER: Mobile par square/edge-to-edge (no radius), Desktop par rounded cards */}
+                    <div className="relative bg-white dark:bg-[#0b0b0e] border-y sm:border border-slate-200/80 dark:border-white/10 rounded-none sm:rounded-[2.5rem] overflow-hidden shadow-none sm:shadow-md dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col">
                       
-                      <div className="py-3 px-4 sm:p-5 flex justify-between items-center bg-slate-50/50 dark:bg-white/[0.02] border-b border-slate-100 dark:border-white/5">
+                      {/* Author Header */}
+                      <div className="py-3 px-4 sm:p-5 flex justify-between items-center bg-transparent border-b border-slate-100 dark:border-white/5 z-10">
                         <div onClick={() => openChefProfile(post.authorId || "mock", post.authorName)} className="flex items-center gap-3 cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                          <div className="w-10 h-10 rounded-full bg-linear-to-tr from-orange-500 to-red-500 p-[2px] shadow">
-                            <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-sm font-black text-slate-900 dark:text-white uppercase transition-colors">{post.authorName.charAt(0)}</div>
+                          <div className="w-9 h-9 rounded-full bg-linear-to-tr from-orange-500 to-red-500 p-[2px] shadow">
+                            <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-xs font-black text-slate-900 dark:text-white uppercase transition-colors">{post.authorName.charAt(0)}</div>
                           </div>
                           <div className="flex flex-col">
                             <p className="text-sm text-slate-900 dark:text-white font-bold transition-colors leading-tight group-hover:underline">{post.authorName}</p>
                             <p className="text-[10px] text-slate-500 font-medium">Zestly Chef</p>
                           </div>
                         </div>
+                        {/* 3 dots icon for more options */}
+                        <button className="text-slate-400 hover:text-slate-600 dark:hover:text-white outline-none [-webkit-tap-highlight-color:transparent]">
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm-7 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm14 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>
+                        </button>
                       </div>
 
-                      <div className={`w-full h-[22rem] sm:h-72 relative flex items-center justify-center cursor-pointer sm:overflow-hidden outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${!post.imageUrl ? `bg-linear-to-br ${post.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
+                      {/* 🚀 Image Area: Mobile par aspect-square (Instagram style 1:1), Desktop par fixed height */}
+                      <div onClick={() => openCookMode(post)} className={`w-full aspect-square sm:aspect-auto sm:h-72 relative flex items-center justify-center cursor-pointer sm:overflow-hidden outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${!post.imageUrl ? `bg-linear-to-br ${post.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
                         {post.imageUrl ? <img src={post.imageUrl} className="w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" /> : <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{post.emoji}</span>}
                       </div>
 
-                      <div className="pt-3 pb-5 px-4 sm:p-6 flex-1 flex flex-col justify-between bg-transparent transition-colors z-10">
+                      {/* Engagement Actions & Text */}
+                      <div className="pt-3 pb-5 px-4 sm:p-5 flex-1 flex flex-col justify-between bg-transparent transition-colors z-10">
                         <div>
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-4">
@@ -548,7 +558,6 @@ export default function HomeTab({ user }: HomeTabProps) {
                                 <svg className={`w-7 h-7 transition-all duration-300 outline-none focus:outline-none ${post.is_liked ? 'fill-red-500 text-red-500 scale-110' : 'text-slate-900 dark:text-white group-hover:text-red-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
                               </button>
                               
-                              {/* 🚀 Comment Button with Instagram style count */}
                               <button onClick={() => openComments(post)} className="group flex items-center gap-1.5 cursor-pointer transition-colors active:scale-95 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
                                 <svg className="w-7 h-7 text-slate-900 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
                                 {post.commentsCount > 0 && <span className="text-[13px] font-bold text-slate-700 dark:text-slate-300">{post.commentsCount}</span>}
@@ -558,18 +567,20 @@ export default function HomeTab({ user }: HomeTabProps) {
                                 <svg className="w-7 h-7 text-slate-900 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
                               </button>
                             </div>
+                            {/* Save Icon (Decorative) */}
+                            <button className="text-slate-900 dark:text-white outline-none active:scale-95 transition-transform">
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+                            </button>
                           </div>
                           
                           <p className="font-bold text-sm text-slate-900 dark:text-white mb-1.5">{post.likesCount} likes</p>
-                          <p className="text-sm text-slate-900 dark:text-white leading-relaxed line-clamp-2"><strong className="mr-1.5 font-bold">{post.authorName}</strong> Check out this amazing recipe! 🥘✨</p>
+                          <p className="text-sm text-slate-900 dark:text-white leading-relaxed line-clamp-2"><strong className="mr-1.5 font-bold cursor-pointer hover:underline" onClick={() => openChefProfile(post.authorId || "mock", post.authorName)}>{post.authorName}</strong> {post.name} - The ultimate {post.type} treat! 🥘✨</p>
                           
-                          {/* 🚀 View All Comments Text (Insta Style) */}
                           {post.commentsCount > 0 && (
-                            <p onClick={() => openComments(post)} className="text-[13px] text-slate-500 mt-1 cursor-pointer font-medium hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+                            <p onClick={() => openComments(post)} className="text-[13px] text-slate-500 mt-1.5 cursor-pointer font-medium hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
                               View all {post.commentsCount} comments
                             </p>
                           )}
-
                         </div>
                       </div>
                     </div>
@@ -656,7 +667,7 @@ export default function HomeTab({ user }: HomeTabProps) {
         document.body
       )}
 
-      {/* PORTALS FOR OTHER MODALS (Comments, Alerts, Toasts) */}
+      {/* COMMENTS MODAL */}
       {mounted && activeCommentsPost && createPortal(
         <div className="fixed inset-0 z-[99999] flex flex-col justify-end bg-black/60 dark:bg-black/80 backdrop-blur-sm sm:items-center sm:justify-center p-0 sm:p-4 transition-all">
           <div className="bg-white dark:bg-[#1c1c1e] border border-slate-200 dark:border-white/10 w-full sm:w-[500px] h-[85vh] sm:h-[650px] rounded-t-[2.5rem] sm:rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
@@ -689,8 +700,6 @@ export default function HomeTab({ user }: HomeTabProps) {
                  onChange={(e) => setCommentInput(e.target.value)} 
                  className="flex-1 bg-slate-100 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-full px-5 py-3.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-orange-400" 
                />
-               
-               {/* 🚀 UX Update: Animated Paper Plane Send Icon */}
                <button 
                  onClick={submitComment} 
                  disabled={isSubmittingComment || !commentInput.trim()}
@@ -709,15 +718,73 @@ export default function HomeTab({ user }: HomeTabProps) {
         </div>, document.body
       )}
 
+      {/* 🚀 FULLY RESTORED COOK MODE UX */}
       {mounted && cookModePost && createPortal(
-        <div className="fixed inset-0 z-[99999] bg-white dark:bg-[#07070a] flex flex-col transition-all">
+        <div className="fixed inset-0 z-[99999] bg-white dark:bg-[#07070a] flex flex-col animate-in slide-in-from-bottom-full duration-500">
           <div className="w-full max-w-4xl mx-auto flex flex-col h-full relative">
-            <div className="shrink-0 pt-10 pb-4 px-6 sm:px-10 border-b border-slate-100 dark:border-white/5 relative z-20">
-              <button onClick={() => setCookModePost(null)} className="absolute top-8 right-6 cursor-pointer bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-white w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-200">✕</button>
+            
+            <div className="shrink-0 pt-10 pb-4 px-6 sm:px-10 bg-white dark:bg-[#07070a] border-b border-slate-100 dark:border-white/5 relative z-20">
+              <button onClick={() => setCookModePost(null)} className="absolute top-8 right-6 sm:right-10 cursor-pointer bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-white w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-200 dark:hover:bg-white/20 transition-colors outline-none [-webkit-tap-highlight-color:transparent]">✕</button>
               <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-6 pr-14 leading-tight">{cookModePost.name}</h3>
+              
+              <div className="flex gap-1.5 mb-2">
+                <div className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${currentStep === -1 ? 'bg-orange-500' : 'bg-slate-200 dark:bg-white/10'}`}></div>
+                {cookModePost.steps.map((_, idx) => (
+                  <div key={idx} className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${currentStep >= idx ? 'bg-orange-500' : 'bg-slate-200 dark:bg-white/10'}`}></div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 sm:px-10 py-10 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {currentStep === -1 && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-10">
+                  <div className="bg-linear-to-r from-orange-50 to-red-50 dark:from-orange-500/10 dark:to-red-500/5 border border-orange-200 dark:border-orange-500/20 p-6 rounded-[2rem] flex justify-between items-center">
+                    <div>
+                      <span className="text-orange-600 dark:text-orange-400 font-extrabold text-base block">Serving Size</span>
+                    </div>
+                    <div className="flex items-center gap-5 bg-white dark:bg-black/40 p-2 rounded-2xl border border-orange-100 dark:border-white/5 shadow-sm dark:shadow-none">
+                      <button onClick={() => setPortions(Math.max(1, portions - 1))} className="cursor-pointer w-12 h-12 rounded-xl bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-900 dark:text-white font-black text-xl active:scale-95 transition-transform outline-none [-webkit-tap-highlight-color:transparent]">-</button>
+                      <span className="font-black text-slate-900 dark:text-white w-8 text-center text-xl">{portions}</span>
+                      <button onClick={() => setPortions(portions + 1)} className="cursor-pointer w-12 h-12 rounded-xl bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-900 dark:text-white font-black text-xl active:scale-95 transition-transform outline-none [-webkit-tap-highlight-color:transparent]">+</button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-slate-900 dark:text-white font-black text-xl mb-5">Ingredients</h4>
+                    <ul className="grid grid-cols-1 gap-4">
+                      {cookModePost.ingredients.map((ing, i) => (
+                        <li key={i} className="flex items-center gap-5 bg-slate-50 dark:bg-white/[0.02] p-5 rounded-2xl border border-slate-100 dark:border-white/5">
+                          <span className="text-slate-700 dark:text-white font-bold text-lg">{ing} <span className="text-orange-500 dark:text-orange-400 ml-2">(x{portions})</span></span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {currentStep >= 0 && (
+                <div className="flex flex-col items-center justify-center h-full text-center space-y-10 animate-in zoom-in-95 duration-500">
+                  <div className="w-32 h-32 rounded-full bg-linear-to-br from-orange-400 to-red-500 flex items-center justify-center text-5xl font-black text-white shadow-[0_8px_30px_#f9731666]">{currentStep + 1}</div>
+                  <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-800 dark:text-white px-4 leading-relaxed">{cookModePost.steps[currentStep]}</h2>
+                </div>
+              )}
+            </div>
+
+            <div className="shrink-0 p-6 sm:px-10 pb-8 bg-linear-to-t from-white dark:from-[#07070a] to-transparent relative z-20">
+              {currentStep === -1 ? (
+                <button onClick={() => setCurrentStep(0)} className="cursor-pointer w-full bg-slate-900 dark:bg-white text-white dark:text-black font-black text-xl py-5 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all outline-none [-webkit-tap-highlight-color:transparent] shadow-[0_8px_30px_#00000033] dark:shadow-[0_8px_30px_#ffffff33]">Let's Start Cooking</button>
+              ) : (
+                <div className="flex gap-4">
+                  <button onClick={() => setCurrentStep(currentStep - 1)} className="cursor-pointer w-1/3 bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 text-slate-700 dark:text-white font-extrabold text-lg py-5 rounded-2xl transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">Back</button>
+                  <button onClick={() => { if (currentStep < cookModePost.steps.length - 1) setCurrentStep(currentStep + 1); else setCookModePost(null); }} className={`cursor-pointer w-2/3 text-white font-extrabold text-lg py-5 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg outline-none [-webkit-tap-highlight-color:transparent] ${currentStep === cookModePost.steps.length - 1 ? 'bg-green-500 hover:bg-green-600 shadow-[0_8px_20px_#22c55e66]' : 'bg-orange-500 hover:bg-orange-600 shadow-[0_8px_20px_#f9731666]'}`}>
+                    {currentStep === cookModePost.steps.length - 1 ? "Finish Meal 🍽️" : "Next Step"}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-        </div>, document.body
+        </div>,
+        document.body
       )}
 
       {mounted && toast.isOpen && createPortal(

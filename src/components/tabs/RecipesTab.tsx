@@ -8,11 +8,6 @@ interface RecipesTabProps {
   user: any;
 }
 
-interface CommentData {
-  author: string;
-  text: string;
-}
-
 interface Recipe {
   id: string;
   name: string;
@@ -47,7 +42,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
 
   const [mounted, setMounted] = useState(false);
   
-  // 🚀 FIXED: Added Missing Toast State and Function
+  // Toast State
   const [toast, setToast] = useState({ isOpen: false, message: "" });
   
   const showToast = (message: string) => {
@@ -55,7 +50,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     setTimeout(() => setToast({ isOpen: false, message: "" }), 3000);
   };
 
-  // --- ADVANCED FORM STATES ---
+  // --- CONTROLLED FORM STATES ---
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<"Veg" | "Non-Veg">("Veg");
   const [newTime, setNewTime] = useState("");
@@ -68,7 +63,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
   const [newIngredients, setNewIngredients] = useState<string[]>([""]);
   const [newSteps, setNewSteps] = useState<string[]>([""]);
   
-  // Image Upload Toggle States
+  // Image Input States
   const [imageInputMode, setImageInputMode] = useState<"upload" | "link">("upload");
   const [imageUrlLink, setImageUrlLink] = useState("");
   const [imageFile, setImageFile] = useState<string | null>(null);
@@ -321,12 +316,12 @@ export default function RecipesTab({ user }: RecipesTabProps) {
               <div className="p-3 text-slate-400 group-focus-within:text-orange-500 transition-colors">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
               </div>
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search recipes..." className="flex-1 w-full min-w-0 bg-transparent text-slate-900 dark:text-white font-semibold px-2 py-2.5 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 cursor-text" />
+              <input type="text" value={searchQuery || ""} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search recipes..." className="flex-1 w-full min-w-0 bg-transparent text-slate-900 dark:text-white font-semibold px-2 py-2.5 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 cursor-text" />
             </div>
           </div>
           
           <div className="relative shrink-0">
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="bg-white dark:bg-[#0c0c10] border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white text-xs sm:text-sm font-extrabold rounded-full pl-5 pr-10 py-4 h-full outline-none cursor-pointer focus:border-orange-500/50 shadow-[0_8px_30px_#0000000d] dark:shadow-2xl appearance-none outline-none [-webkit-tap-highlight-color:transparent]">
+            <select value={sortBy || "Newest"} onChange={(e) => setSortBy(e.target.value as any)} className="bg-white dark:bg-[#0c0c10] border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white text-xs sm:text-sm font-extrabold rounded-full pl-5 pr-10 py-4 h-full outline-none cursor-pointer focus:border-orange-500/50 shadow-[0_8px_30px_#0000000d] dark:shadow-2xl appearance-none outline-none [-webkit-tap-highlight-color:transparent]">
               <option value="Newest" className="bg-white dark:bg-black text-slate-900 dark:text-white">✨ Newest</option>
               <option value="Quickest" className="bg-white dark:bg-black text-slate-900 dark:text-white">⏱️ Quickest</option>
               <option value="High Protein" className="bg-white dark:bg-black text-slate-900 dark:text-white">💪 High Protein</option>
@@ -346,14 +341,14 @@ export default function RecipesTab({ user }: RecipesTabProps) {
         </div>
       </div>
 
-      {/* --- RECIPE GRID --- */}
+      {/* --- RECIPE GRID (INSTAGRAM / FACEBOOK MOBILE RESPONSIVE STYLE) --- */}
       {isLoadingDB ? (
         <div className="flex flex-col items-center justify-center py-20 text-orange-500 gap-4">
           <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
           <p className="font-bold">Loading your Cloud Recipes...</p>
         </div>
       ) : (
-        <div className="w-full max-w-5xl flex flex-col gap-6 sm:grid sm:grid-cols-2 sm:gap-7 relative z-10 mt-6 px-1">
+        <div className="w-full max-w-5xl flex flex-col gap-0 sm:grid sm:grid-cols-2 sm:gap-7 relative z-10 mt-6 px-0 sm:px-1">
           {filteredAndSortedRecipes.length === 0 ? (
             <div className="col-span-full flex flex-col items-center justify-center text-center py-20 px-6 border-2 border-dashed border-slate-300 dark:border-white/10 bg-white dark:bg-white/[0.01] rounded-[2.5rem] animate-in zoom-in-95 duration-500 mx-4">
               <span className="text-6xl mb-5 opacity-50 drop-shadow-md">👨‍🍳</span>
@@ -364,11 +359,13 @@ export default function RecipesTab({ user }: RecipesTabProps) {
             </div>
           ) : (
             filteredAndSortedRecipes.map((recipe) => (
-              <div key={recipe.id} className="flex flex-col w-full px-2 sm:px-0">
-                <div className="relative bg-white dark:bg-[#0b0b0e] border border-slate-200/80 dark:border-white/10 rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden shadow-md dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col mx-2 sm:mx-0">
+              <div key={recipe.id} className="flex flex-col w-full border-b-[8px] sm:border-b-0 border-slate-100 dark:border-[#121216] sm:bg-transparent">
+                
+                {/* Mobile: rounded-none and no-shadow | Laptop: Rounded Cards with Deep Glow */}
+                <div className="relative bg-white dark:bg-[#0b0b0e] border-y sm:border border-slate-200/80 dark:border-white/10 rounded-none sm:rounded-[2.5rem] overflow-hidden shadow-none sm:shadow-md dark:sm:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col">
                   
-                  {/* Image Area */}
-                  <div className={`w-full h-[22rem] sm:h-64 relative flex items-center justify-center cursor-pointer sm:overflow-hidden ${!recipe.imageUrl ? `bg-linear-to-br ${recipe.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
+                  {/* Image Container: Square on Mobile (1:1 aspect ratio), Fixed Height on Desktop */}
+                  <div className={`w-full aspect-square sm:aspect-auto sm:h-64 relative flex items-center justify-center cursor-pointer sm:overflow-hidden ${!recipe.imageUrl ? `bg-linear-to-br ${recipe.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
                     {recipe.imageUrl ? (
                       <>
                         <div className="absolute inset-0 bg-cover bg-center blur-xl opacity-20 sm:group-hover/card:opacity-40 sm:group-hover/card:scale-110 transition-all duration-700" style={{ backgroundImage: `url(${recipe.imageUrl})` }}></div>
@@ -378,7 +375,6 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                       <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{recipe.emoji}</span>
                     )}
                     
-                    {/* Title Overlay */}
                     <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/80 via-black/30 to-transparent p-5 pt-20 z-20">
                       <div className="flex justify-between items-start gap-2 mb-2">
                         <h3 className="text-white font-extrabold text-2xl leading-tight tracking-tight drop-shadow-lg">{recipe.name}</h3>
@@ -386,13 +382,11 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                       </div>
                     </div>
 
-                    {/* Top Tags */}
                     <div className="absolute top-4 left-4 flex gap-2 z-20">
-                      <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-blue-400">P</span> {recipe.macros.protein}g</span>
-                      <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-yellow-400">C</span> {recipe.macros.carbs}g</span>
+                      <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-blue-400">P</span> {recipe.macros?.protein || 0}g</span>
+                      <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-yellow-400">C</span> {recipe.macros?.carbs || 0}g</span>
                     </div>
 
-                    {/* Top Right Action Buttons */}
                     <div className="absolute top-4 right-4 flex flex-col gap-2.5 z-20">
                       <button onClick={() => toggleLike(recipe.id)} className="group cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-black/80 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
                         <svg className={`w-5 h-5 transition-transform ${recipe.isLiked ? 'fill-red-500 text-red-500 scale-110 drop-shadow-[0_0_8px_#ef444466]' : 'group-hover:text-red-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
@@ -408,7 +402,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                     </div>
                   </div>
 
-                  {/* Details Section */}
+                  {/* Details Overlay and CTA */}
                   <div className="py-4 px-4 sm:p-5 flex-1 flex flex-col justify-between bg-transparent">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-4 text-xs font-bold text-slate-500 dark:text-slate-400">
@@ -451,7 +445,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
             <div className="flex-1 overflow-y-auto p-6 sm:px-10 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               <form onSubmit={handleAddRecipe} className="space-y-8 pb-10">
                 
-                {/* Image Upload or Paste URL Toggle */}
+                {/* Image Input Selection */}
                 <div className="flex flex-col gap-3">
                   <div className="flex bg-slate-100 dark:bg-white/5 p-1.5 rounded-2xl w-fit">
                     <button type="button" onClick={() => setImageInputMode("upload")} className={`cursor-pointer px-5 py-2.5 rounded-xl text-sm font-bold transition-all outline-none [-webkit-tap-highlight-color:transparent] ${imageInputMode === 'upload' ? 'bg-white dark:bg-[#1c1c1e] shadow-sm text-orange-500' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Upload File</button>
@@ -466,7 +460,8 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                       onClick={() => !imageFile && !isCompressing && fileInputRef.current?.click()}
                       className={`relative w-full aspect-video sm:h-72 rounded-[2.5rem] border-2 border-dashed transition-all flex flex-col items-center justify-center group overflow-hidden outline-none [-webkit-tap-highlight-color:transparent] ${isDragging ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10' : 'border-slate-300 dark:border-white/20 hover:border-orange-500 bg-slate-50 dark:bg-[#0c0c10] cursor-pointer'}`}
                     >
-                      <input type="file" accept="image/*" onChange={handleImageChange} ref={fileInputRef} disabled={isCompressing || isSaving} className="hidden" />
+                      {/* Dynamic key prevents React from keeping internal state across upload triggers */}
+                      <input key={imageFile ? "filled" : "empty"} type="file" accept="image/*" onChange={handleImageChange} ref={fileInputRef} disabled={isCompressing || isSaving} className="hidden" />
                       
                       {isCompressing ? (
                         <div className="flex flex-col items-center gap-3">
@@ -495,7 +490,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                       <input 
                         type="url" 
                         placeholder="Paste image URL here (e.g., https://example.com/food.jpg)" 
-                        value={imageUrlLink} 
+                        value={imageUrlLink || ""} 
                         onChange={(e) => setImageUrlLink(e.target.value)} 
                         disabled={isSaving} 
                         className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white outline-none focus:border-orange-500 transition-all cursor-text placeholder:text-slate-400" 
@@ -509,10 +504,11 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                   )}
                 </div>
 
+                {/* Controlled Inputs with strict fallback logic */}
                 <div className="flex flex-col sm:flex-row gap-4">
-                  <input type="text" placeholder="Recipe Name" value={newName} onChange={(e) => setNewName(e.target.value)} disabled={isSaving} className="flex-1 w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white outline-none focus:border-orange-500 transition-all cursor-text disabled:opacity-50 placeholder:text-slate-400" required />
+                  <input type="text" placeholder="Recipe Name" value={newName || ""} onChange={(e) => setNewName(e.target.value)} disabled={isSaving} className="flex-1 w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white outline-none focus:border-orange-500 transition-all cursor-text disabled:opacity-50 placeholder:text-slate-400" required />
                   <div className="relative w-full sm:w-40 shrink-0">
-                    <select value={newType} onChange={(e) => setNewType(e.target.value as any)} disabled={isSaving} className="w-full h-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl pl-4 pr-10 py-4 text-slate-900 dark:text-white font-bold outline-none focus:border-orange-500 appearance-none disabled:opacity-50 cursor-pointer">
+                    <select value={newType || "Veg"} onChange={(e) => setNewType(e.target.value as any)} disabled={isSaving} className="w-full h-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl pl-4 pr-10 py-4 text-slate-900 dark:text-white font-bold outline-none focus:border-orange-500 appearance-none disabled:opacity-50 cursor-pointer">
                       <option value="Veg" className="bg-white dark:bg-[#0b0b0e]">🥬 Veg</option>
                       <option value="Non-Veg" className="bg-white dark:bg-[#0b0b0e]">🥩 Meat</option>
                     </select>
@@ -523,10 +519,10 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  <input type="number" placeholder="Mins" value={newTime} onChange={(e) => setNewTime(e.target.value)} disabled={isSaving} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white outline-none focus:border-orange-500 transition-all placeholder:text-slate-400 cursor-text font-bold" />
-                  <input type="number" placeholder="Kcal" value={newCalories} onChange={(e) => setNewCalories(e.target.value)} disabled={isSaving} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white outline-none focus:border-orange-500 transition-all placeholder:text-slate-400 cursor-text font-bold" />
+                  <input type="number" placeholder="Mins" value={newTime || ""} onChange={(e) => setNewTime(e.target.value)} disabled={isSaving} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white outline-none focus:border-orange-500 transition-all placeholder:text-slate-400 cursor-text font-bold" />
+                  <input type="number" placeholder="Kcal" value={newCalories || ""} onChange={(e) => setNewCalories(e.target.value)} disabled={isSaving} className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white outline-none focus:border-orange-500 transition-all placeholder:text-slate-400 cursor-text font-bold" />
                   <div className="relative w-full col-span-2 sm:col-span-1">
-                    <select value={newDifficulty} onChange={(e) => setNewDifficulty(e.target.value as any)} disabled={isSaving} className="w-full h-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl pl-4 pr-10 py-4 text-slate-900 dark:text-white font-bold outline-none focus:border-orange-500 appearance-none cursor-pointer">
+                    <select value={newDifficulty || "Easy"} onChange={(e) => setNewDifficulty(e.target.value as any)} disabled={isSaving} className="w-full h-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl pl-4 pr-10 py-4 text-slate-900 dark:text-white font-bold outline-none focus:border-orange-500 appearance-none cursor-pointer">
                       <option value="Easy" className="bg-white dark:bg-black">🟢 Easy</option>
                       <option value="Medium" className="bg-white dark:bg-black">🟡 Med</option>
                       <option value="Hard" className="bg-white dark:bg-black">🔴 Hard</option>
@@ -542,17 +538,17 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                   <div className="grid grid-cols-3 gap-3 sm:gap-4">
                     <div className="flex items-center bg-white dark:bg-black/40 rounded-2xl px-3 sm:px-4 py-3 border border-slate-200 dark:border-white/5 focus-within:border-orange-500 transition-colors shadow-sm dark:shadow-none">
                       <span className="text-blue-500 font-bold text-xs sm:text-sm mr-2">P</span>
-                      <input type="number" placeholder="0" value={newProtein} onChange={(e) => setNewProtein(e.target.value)} className="w-full bg-transparent text-slate-900 dark:text-white font-bold outline-none text-sm sm:text-base placeholder:text-slate-400 cursor-text" />
+                      <input type="number" placeholder="0" value={newProtein || ""} onChange={(e) => setNewProtein(e.target.value)} className="w-full bg-transparent text-slate-900 dark:text-white font-bold outline-none text-sm sm:text-base placeholder:text-slate-400 cursor-text" />
                       <span className="text-slate-400 text-xs sm:text-sm font-bold">g</span>
                     </div>
                     <div className="flex items-center bg-white dark:bg-black/40 rounded-2xl px-3 sm:px-4 py-3 border border-slate-200 dark:border-white/5 focus-within:border-orange-500 transition-colors shadow-sm dark:shadow-none">
                       <span className="text-yellow-500 font-bold text-xs sm:text-sm mr-2">C</span>
-                      <input type="number" placeholder="0" value={newCarbs} onChange={(e) => setNewCarbs(e.target.value)} className="w-full bg-transparent text-slate-900 dark:text-white font-bold outline-none text-sm sm:text-base placeholder:text-slate-400 cursor-text" />
+                      <input type="number" placeholder="0" value={newCarbs || ""} onChange={(e) => setNewCarbs(e.target.value)} className="w-full bg-transparent text-slate-900 dark:text-white font-bold outline-none text-sm sm:text-base placeholder:text-slate-400 cursor-text" />
                       <span className="text-slate-400 text-xs sm:text-sm font-bold">g</span>
                     </div>
                     <div className="flex items-center bg-white dark:bg-black/40 rounded-2xl px-3 sm:px-4 py-3 border border-slate-200 dark:border-white/5 focus-within:border-orange-500 transition-colors shadow-sm dark:shadow-none">
                       <span className="text-red-500 font-bold text-xs sm:text-sm mr-2">F</span>
-                      <input type="number" placeholder="0" value={newFats} onChange={(e) => setNewFats(e.target.value)} className="w-full bg-transparent text-slate-900 dark:text-white font-bold outline-none text-sm sm:text-base placeholder:text-slate-400 cursor-text" />
+                      <input type="number" placeholder="0" value={newFats || ""} onChange={(e) => setNewFats(e.target.value)} className="w-full bg-transparent text-slate-900 dark:text-white font-bold outline-none text-sm sm:text-base placeholder:text-slate-400 cursor-text" />
                       <span className="text-slate-400 text-xs sm:text-sm font-bold">g</span>
                     </div>
                   </div>
@@ -563,7 +559,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                   {newIngredients.map((ing, idx) => (
                     <div key={`ing-${idx}`} className="flex gap-3 items-center">
                       <div className="w-6 text-center text-sm font-bold text-slate-400">{idx + 1}.</div>
-                      <input type="text" placeholder="e.g. 2 Chopped Onions" value={ing} onChange={(e) => handleIngredientChange(idx, e.target.value)} disabled={isSaving} className="flex-1 bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white font-medium outline-none focus:border-orange-500 transition-all cursor-text shadow-sm dark:shadow-none" required />
+                      <input type="text" placeholder="e.g. 2 Chopped Onions" value={ing || ""} onChange={(e) => handleIngredientChange(idx, e.target.value)} disabled={isSaving} className="flex-1 bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white font-medium outline-none focus:border-orange-500 transition-all cursor-text shadow-sm dark:shadow-none" required />
                       {newIngredients.length > 1 && (
                         <button type="button" onClick={() => removeIngredientField(idx)} className="text-slate-400 hover:text-red-500 p-2 transition-colors cursor-pointer active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
                           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -581,7 +577,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                   {newSteps.map((step, idx) => (
                     <div key={`step-${idx}`} className="flex gap-3 items-start">
                       <div className="w-6 pt-4 text-center text-sm font-bold text-slate-400">{idx + 1}.</div>
-                      <textarea placeholder="e.g. Heat oil in a pan..." value={step} onChange={(e) => handleStepChange(idx, e.target.value)} disabled={isSaving} rows={2} className="flex-1 bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white font-medium outline-none focus:border-orange-500 transition-all resize-none cursor-text shadow-sm dark:shadow-none" required></textarea>
+                      <textarea placeholder="e.g. Heat oil in a pan..." value={step || ""} onChange={(e) => handleStepChange(idx, e.target.value)} disabled={isSaving} rows={2} className="flex-1 bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white font-medium outline-none focus:border-orange-500 transition-all resize-none cursor-text shadow-sm dark:shadow-none" required></textarea>
                       {newSteps.length > 1 && (
                         <button type="button" onClick={() => removeStepField(idx)} className="text-slate-400 hover:text-red-500 p-2 mt-2 transition-colors cursor-pointer active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
                           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -679,7 +675,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
         document.body
       )}
 
-      {/* 🚀 FIXED: Missing Toast Portal added here */}
+      {/* Toast Alert Portal */}
       {mounted && toast.isOpen && createPortal(
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[99999] pointer-events-none">
           <div className="bg-slate-900 dark:bg-[#1c1c1e] text-white px-6 py-3.5 rounded-full shadow-lg text-sm font-bold border border-slate-700 dark:border-white/10">{toast.message}</div>
