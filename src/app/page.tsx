@@ -27,7 +27,16 @@ export default function HomePage() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
 
-  useEffect(() => setMounted(true), []);
+  // 🚀 NAYA CODE: Page load hote hi browser ki memory se purana tab uthao
+  useEffect(() => {
+    setMounted(true);
+    if (typeof window !== "undefined") {
+      const savedTab = localStorage.getItem("zestly_active_tab");
+      if (savedTab) {
+        setActiveTab(savedTab);
+      }
+    }
+  }, []);
 
   // 🚀 FIXED & SUPER SAFE: One and only one setup function
   useEffect(() => {
@@ -101,6 +110,7 @@ export default function HomePage() {
     })));
   };
 
+  // 🚀 UPGRADED: Ab tab change hone par browser ki memory mein bhi save hoga
   const handleTabClick = (tab: string) => {
     const privateTabs = ["pantry", "shop", "profile"];
     if (!user && privateTabs.includes(tab)) {
@@ -109,6 +119,9 @@ export default function HomePage() {
       return;
     }
     setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("zestly_active_tab", tab);
+    }
   };
 
   const openNotifications = async () => {
