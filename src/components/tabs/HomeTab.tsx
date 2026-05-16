@@ -48,6 +48,17 @@ interface FeedPost {
   difficulty: string;
 }
 
+// ─── HELPER ───────────────────────────────────────────────
+const timeAgo = (dateStr?: string) => {
+  if (!dateStr) return "just now";
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m`;
+  if (mins < 1440) return `${Math.floor(mins / 60)}h`;
+  return `${Math.floor(mins / 1440)}d`;
+};
+
 // ─── COMPONENT ────────────────────────────────────────────
 export default function HomeTab({ user }: HomeTabProps) {
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -61,7 +72,8 @@ export default function HomeTab({ user }: HomeTabProps) {
   const [activeCommentsPost, setActiveCommentsPost] = useState<FeedPost | null>(null);
   const [commentInput, setCommentInput] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false); 
-  const [replyingTo, setReplyingTo] = useState<{ id: string, author: string } | null>(null);
+  // 🚀 ADVANCED: Track parent comment and sub-replies
+  const [replyingTo, setReplyingTo] = useState<{ commentId: string, author: string, isSubReply?: boolean } | null>(null);
 
   const [cookModePost, setCookModePost] = useState<FeedPost | null>(null);
   const [portions, setPortions] = useState(1);
@@ -142,7 +154,6 @@ export default function HomeTab({ user }: HomeTabProps) {
   };
 
   const fetchFeedAndChefs = async () => {
-    // 🔥 SAFE FETCH: Fetch recipes without risky joins
     const { data: recipesData, error: recipesError } = await supabase
       .from("recipes")
       .select("*")
@@ -150,10 +161,8 @@ export default function HomeTab({ user }: HomeTabProps) {
 
     if (recipesError) console.error("Error fetching recipes:", recipesError);
 
-    // 🔥 SAFE FETCH: Fetch profiles to map avatars manually
     const { data: profilesData } = await supabase.from("profiles").select("*");
     
-    // Create a dictionary for quick avatar lookup
     const profileMap = new Map();
     if (profilesData) {
       profilesData.forEach(p => profileMap.set(p.id, p));
@@ -175,7 +184,6 @@ export default function HomeTab({ user }: HomeTabProps) {
 
         const totalComments = safeComments.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0);
         
-        // Grab author details safely from frontend map
         const authorProfile = profileMap.get(item.author_id);
 
         return {
@@ -188,7 +196,7 @@ export default function HomeTab({ user }: HomeTabProps) {
           imageUrl: item.image_url,
           authorName: item.author_name || "Chef Zestly", 
           authorId: item.author_id || item.user_id,
-          authorAvatar: authorProfile?.avatar_url || null, // Safely mapped!
+          authorAvatar: authorProfile?.avatar_url || null, 
           likesCount: item.likes_count || 0,
           commentsList: safeComments, 
           commentsCount: totalComments,
@@ -326,6 +334,7 @@ export default function HomeTab({ user }: HomeTabProps) {
     setReplyingTo(null);
   };
 
+  // 🚀 FIXED: Robust Comment & Reply System
   const submitComment = async () => {
     if (!checkAuth() || !activeCommentsPost) return;
     const text = commentInput.trim();
@@ -334,11 +343,16 @@ export default function HomeTab({ user }: HomeTabProps) {
     setIsSubmittingComment(true); 
     const currentUserName = myProfile?.full_name?.split(" ")[0] || user?.user_metadata?.full_name?.split(" ")[0] || "Chef"; 
     
+    // Auto-prefix username for sub-replies to look like Instagram
+    const finalText = replyingTo?.isSubReply && !text.startsWith(`@${replyingTo.author}`) 
+      ? `@${replyingTo.author} ${text}` 
+      : text;
+
     const newEntry = {
       id: Date.now().toString(),
       author: currentUserName,
       avatar_url: myProfile?.avatar_url || null,
-      text: text,
+      text: finalText,
       created_at: new Date().toISOString(),
       replies: []
     };
@@ -346,20 +360,25 @@ export default function HomeTab({ user }: HomeTabProps) {
     let newCommentsList = [...activeCommentsPost.commentsList];
 
     if (replyingTo) {
+      // Add as a reply to the master comment thread
       newCommentsList = newCommentsList.map(cmt => {
-        if (cmt.id === replyingTo.id) {
+        if (cmt.id === replyingTo.commentId) {
           return { ...cmt, replies: [...(cmt.replies || []), newEntry] };
         }
         return cmt;
       });
     } else {
+      // Add as a main comment
       newCommentsList.push(newEntry);
     }
 
     const totalComments = newCommentsList.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0);
     const updatedPost = { ...activeCommentsPost, commentsCount: totalComments, commentsList: newCommentsList };
     
-    const { error } = await supabase.from("recipes").update({ comments_data: newCommentsList }).eq("id", activeCommentsPost.id);
+    // 🔥 CRITICAL FIX: Ensure valid JSON to prevent Supabase rejection
+    const safeJsonData = JSON.parse(JSON.stringify(newCommentsList));
+
+    const { error } = await supabase.from("recipes").update({ comments_data: safeJsonData }).eq("id", activeCommentsPost.id);
 
     if (!error) {
       setPosts(posts.map(p => p.id === activeCommentsPost.id ? updatedPost : p));
@@ -368,6 +387,7 @@ export default function HomeTab({ user }: HomeTabProps) {
       setReplyingTo(null);
       showToast(replyingTo ? "Reply posted! 💬" : "Comment posted! 💬");
     } else {
+      console.error("DB Error:", error);
       showToast("Failed to post comment. Check DB!");
     }
     setIsSubmittingComment(false); 
@@ -741,7 +761,7 @@ export default function HomeTab({ user }: HomeTabProps) {
         document.body
       )}
 
-      {/* COMMENTS MODAL */}
+      {/* 🚀🔥 NEW INSTAGRAM STYLE COMMENTS MODAL */}
       {mounted && activeCommentsPost && createPortal(
         <div className="fixed inset-0 z-[99999] flex flex-col justify-end bg-black/60 dark:bg-black/80 backdrop-blur-sm sm:items-center sm:justify-center p-0 sm:p-4 transition-all">
           <div className="bg-white dark:bg-[#1c1c1e] border border-slate-200 dark:border-white/10 w-full sm:w-[500px] h-[85vh] sm:h-[650px] rounded-t-[2.5rem] sm:rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
@@ -754,45 +774,71 @@ export default function HomeTab({ user }: HomeTabProps) {
                {activeCommentsPost.commentsList.length === 0 ? (
                  <p className="text-center text-slate-500 mt-10">No comments yet. Be the first!</p>
                ) : (
-                 <div className="flex flex-col gap-5">
+                 <div className="flex flex-col gap-6">
                    {activeCommentsPost.commentsList.map((cmt) => (
-                     <div key={cmt.id} className="flex flex-col gap-3">
+                     <div key={cmt.id} className="flex gap-3 relative">
                        
-                       {/* Main Comment */}
-                       <div className="flex gap-3">
-                         <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold shrink-0 overflow-hidden">
+                       {/* Avatar Container with Thread Line */}
+                       <div className="flex flex-col items-center gap-2">
+                         <div className="w-9 h-9 rounded-full bg-linear-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-xs font-bold shrink-0 overflow-hidden z-10 shadow-sm">
                            {cmt.avatar_url ? <img src={cmt.avatar_url} className="w-full h-full object-cover" /> : cmt.author.charAt(0).toUpperCase()}
                          </div>
-                         <div className="w-full">
-                           <div className="bg-slate-50 dark:bg-white/5 p-3 rounded-2xl rounded-tl-none w-fit min-w-[120px] max-w-full">
-                             <p className="font-bold text-xs text-slate-900 dark:text-white mb-0.5">{cmt.author}</p>
-                             <p className="text-sm text-slate-700 dark:text-slate-300 break-words">{cmt.text}</p>
-                           </div>
-                           <button onClick={() => setReplyingTo({ id: cmt.id, author: cmt.author })} className="text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 mt-1.5 ml-2 transition-colors outline-none cursor-pointer">
-                             Reply
-                           </button>
-                         </div>
+                         {/* Instagram style thread line for replies */}
+                         {cmt.replies && cmt.replies.length > 0 && (
+                           <div className="w-[2px] bg-slate-200 dark:bg-white/10 absolute top-10 bottom-4 left-[17px] z-0"></div>
+                         )}
                        </div>
 
-                       {/* Replies */}
-                       {cmt.replies && cmt.replies.length > 0 && (
-                         <div className="flex flex-col gap-3 ml-11">
-                           {cmt.replies.map(reply => (
-                             <div key={reply.id} className="flex gap-2">
-                               <div className="w-6 h-6 rounded-full bg-slate-300 dark:bg-slate-700 flex items-center justify-center text-white text-[10px] font-bold shrink-0 overflow-hidden">
-                                 {reply.avatar_url ? <img src={reply.avatar_url} className="w-full h-full object-cover" /> : reply.author.charAt(0).toUpperCase()}
-                               </div>
-                               <div className="w-full">
-                                 <div className="bg-slate-50 dark:bg-white/5 px-3 py-2 rounded-2xl rounded-tl-none w-fit min-w-[100px] max-w-full">
-                                   <p className="font-bold text-[11px] text-slate-900 dark:text-white">{reply.author}</p>
-                                   <p className="text-[13px] text-slate-700 dark:text-slate-300 break-words">{reply.text}</p>
+                       <div className="w-full pb-2">
+                         {/* Main Comment Bubble */}
+                         <div className="bg-slate-50 dark:bg-white/5 p-3.5 rounded-2xl rounded-tl-none w-fit min-w-[120px] max-w-full">
+                           <p className="font-bold text-xs text-slate-900 dark:text-white mb-1">
+                             {cmt.author} 
+                             <span className="text-[10px] text-slate-400 font-normal ml-2">{timeAgo(cmt.created_at)}</span>
+                           </p>
+                           <p className="text-[13px] text-slate-700 dark:text-slate-300 break-words leading-relaxed">{cmt.text}</p>
+                         </div>
+                         
+                         {/* Reply Action */}
+                         <button onClick={() => setReplyingTo({ commentId: cmt.id, author: cmt.author })} className="text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 mt-2 ml-2 transition-colors outline-none cursor-pointer">
+                           Reply
+                         </button>
+
+                         {/* Sub-Replies List */}
+                         {cmt.replies && cmt.replies.length > 0 && (
+                           <div className="flex flex-col gap-4 mt-4">
+                             {cmt.replies.map(reply => (
+                               <div key={reply.id} className="flex gap-2.5 relative z-10">
+                                 <div className="w-7 h-7 rounded-full bg-slate-300 dark:bg-slate-700 flex items-center justify-center text-white text-[10px] font-bold shrink-0 overflow-hidden shadow-sm">
+                                   {reply.avatar_url ? <img src={reply.avatar_url} className="w-full h-full object-cover" /> : reply.author.charAt(0).toUpperCase()}
+                                 </div>
+                                 <div className="w-full">
+                                   <div className="bg-slate-50/80 dark:bg-white/[0.03] px-3.5 py-2.5 rounded-2xl rounded-tl-none w-fit min-w-[100px] max-w-full">
+                                     <p className="font-bold text-[11px] text-slate-900 dark:text-white mb-0.5">
+                                       {reply.author} 
+                                       <span className="text-[9px] text-slate-400 font-normal ml-1.5">{timeAgo(reply.created_at)}</span>
+                                     </p>
+                                     <p className="text-[13px] text-slate-700 dark:text-slate-300 break-words leading-relaxed">
+                                       {/* Highlight @username logically */}
+                                       {reply.text.startsWith('@') ? (
+                                         <>
+                                           <span className="text-blue-500 font-medium mr-1">{reply.text.split(' ')[0]}</span>
+                                           <span>{reply.text.substring(reply.text.indexOf(' '))}</span>
+                                         </>
+                                       ) : (
+                                         reply.text
+                                       )}
+                                     </p>
+                                   </div>
+                                   <button onClick={() => setReplyingTo({ commentId: cmt.id, author: reply.author, isSubReply: true })} className="text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 mt-1.5 ml-2 transition-colors outline-none cursor-pointer">
+                                     Reply
+                                   </button>
                                  </div>
                                </div>
-                             </div>
-                           ))}
-                         </div>
-                       )}
-
+                             ))}
+                           </div>
+                         )}
+                       </div>
                      </div>
                    ))}
                  </div>
@@ -814,6 +860,7 @@ export default function HomeTab({ user }: HomeTabProps) {
                  placeholder={replyingTo ? "Write a reply..." : "Add a comment..."} 
                  value={commentInput} 
                  onChange={(e) => setCommentInput(e.target.value)} 
+                 onKeyDown={(e) => e.key === 'Enter' && submitComment()}
                  className="flex-1 bg-slate-100 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-full px-5 py-3.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-orange-400" 
                />
                <button 
