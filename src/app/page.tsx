@@ -4,6 +4,8 @@ import { supabase } from "../lib/supabase";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTheme } from "next-themes";
+import { createPortal } from "react-dom";
+import OneSignal from 'react-onesignal';
 
 // Saare Tabs import
 import PantryTab from "../components/tabs/PantryTab";
@@ -21,20 +23,83 @@ export default function HomePage() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
+  // --- NOTIFICATION STATES ---
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+
   useEffect(() => setMounted(true), []);
 
+  // 🚀 FIXED & SUPER SAFE: One and only one setup function
   useEffect(() => {
-    const checkUser = async () => {
+    let isMounted = true;
+
+    const setupApp = async () => {
+      // 1. Auth check
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
+      
+      if (session && isMounted) {
         setUser(session.user);
-      } else {
+        fetchNotifications(session.user.id);
+      } else if (isMounted) {
         setUser(null); 
       }
-      setLoading(false);
+      
+      if (isMounted) {
+        setLoading(false); // UI load ho jayega, black screen hamesha ke liye khatam
+      }
+
+      // 2. Safe OneSignal Setup (Ad-blocker proof)
+      try {
+        if (typeof window !== "undefined") {
+          await OneSignal.init({
+            appId: "31135af9-3003-4c69-bc1e-faacbfa8c672",
+            allowLocalhostAsSecureOrigin: true,
+          });
+          
+          // @ts-ignore
+          OneSignal.Slidedown.promptPush();
+
+          if (session) {
+            await OneSignal.login(session.user.id);
+          } else {
+            await OneSignal.logout();
+          }
+        }
+      } catch (e) {
+        console.log("OneSignal blocked by browser (Brave/Ad-Blocker). App will continue normally.", e);
+      }
     };
-    checkUser();
+
+    setupApp();
+
+    return () => { isMounted = false; };
   }, []);
+
+  // 🚀 Real-time Listener for Bell Icon Updates
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase.channel('realtime-notifs')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, 
+        () => fetchNotifications(user.id)
+      ).subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
+
+  const fetchNotifications = async (userId: string) => {
+    const { data: notifs } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(30);
+    if (!notifs || notifs.length === 0) { setNotifications([]); return; }
+    
+    const actorIds = [...new Set(notifs.map(n => n.actor_id))];
+    const { data: actors } = await supabase.from('profiles').select('id, full_name, username').in('id', actorIds);
+    const recipeIds = [...new Set(notifs.filter(n => n.recipe_id).map(n => n.recipe_id))];
+    const { data: recipes } = await supabase.from('recipes').select('id, name').in('id', recipeIds);
+    
+    setNotifications(notifs.map(n => ({
+      ...n,
+      actorName: actors?.find(a => a.id === n.actor_id)?.full_name || 'Someone',
+      recipeName: recipes?.find(r => r.id === n.recipe_id)?.name || 'a recipe'
+    })));
+  };
 
   const handleTabClick = (tab: string) => {
     const privateTabs = ["pantry", "shop", "profile"];
@@ -44,6 +109,15 @@ export default function HomePage() {
       return;
     }
     setActiveTab(tab);
+  };
+
+  const openNotifications = async () => {
+    setIsNotifOpen(true);
+    const unreadIds = notifications.filter(n => !n.is_read).map(n => n.id);
+    if (unreadIds.length > 0) {
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      await supabase.from('notifications').update({ is_read: true }).in('id', unreadIds);
+    }
   };
 
   if (loading) {
@@ -57,25 +131,16 @@ export default function HomePage() {
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case "pantry": 
-        // @ts-ignore
-        return <PantryTab user={user} />;
-      case "recipes": 
-        // @ts-ignore
-        return <RecipesTab user={user} />;
-      case "explore": 
-        // @ts-ignore
-        return <ExploreTab user={user} />;
-      case "shop": 
-        return <ShopTab />;
-      case "profile": 
-        // @ts-ignore
-        return <ProfileTab user={user} />;
-      default: 
-        // @ts-ignore
-        return <ExploreTab user={user} />;
+      case "pantry": return <PantryTab user={user} />; // @ts-ignore
+      case "recipes": return <RecipesTab user={user} />; // @ts-ignore
+      case "explore": return <ExploreTab user={user} />; // @ts-ignore
+      case "shop": return <ShopTab />;
+      case "profile": return <ProfileTab user={user} />; // @ts-ignore
+      default: return <ExploreTab user={user} />; // @ts-ignore
     }
   };
+
+  const unreadCount = notifications.filter(n => !n.is_read).length;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#07070a] text-slate-900 dark:text-white font-sans selection:bg-orange-500/30 flex flex-col cursor-default transition-colors duration-300">
@@ -83,7 +148,6 @@ export default function HomePage() {
       <div className="fixed top-[-10%] right-[-5%] w-80 h-80 bg-orange-600/10 rounded-full blur-[100px] pointer-events-none z-0"></div>
 
       {/* --- HEADER --- */}
-      {/* Wapas pehle jaisa edge-to-edge kar diya hai */}
       <header className="sticky top-0 z-40 bg-white/85 dark:bg-[#07070a]/85 backdrop-blur-xl border-b border-slate-200 dark:border-white/5 px-5 py-3 flex justify-between items-center transition-colors duration-300 shadow-sm dark:shadow-none">
         
         <div className="text-2xl font-black bg-clip-text text-transparent bg-linear-to-r from-orange-500 to-red-500 tracking-tighter cursor-pointer" onClick={() => handleTabClick("explore")}>
@@ -92,8 +156,21 @@ export default function HomePage() {
         
         <div className="flex items-center gap-3.5">
           {user ? (
-            <div className="bg-linear-to-r from-yellow-500 to-orange-500 text-white text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full shadow-[0_0_10px_#eab3084d] cursor-pointer hover:scale-105 transition-transform" onClick={() => handleTabClick("profile")}>
-              ⭐ 120 XP
+            <div className="flex items-center gap-4">
+              
+              {/* 🔔 Notification Bell */}
+              <button onClick={openNotifications} className="relative cursor-pointer text-slate-600 dark:text-slate-300 hover:text-orange-500 transition-colors outline-none [-webkit-tap-highlight-color:transparent]">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                {unreadCount > 0 && (
+                  <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 border-2 border-white dark:border-[#07070a] rounded-full animate-pulse"></span>
+                )}
+              </button>
+
+              <div className="bg-linear-to-r from-yellow-500 to-orange-500 text-white text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full shadow-[0_0_10px_#eab3084d] cursor-pointer hover:scale-105 transition-transform" onClick={() => handleTabClick("profile")}>
+                ⭐ 120 XP
+              </div>
             </div>
           ) : (
             <div className="flex items-center gap-3">
@@ -124,13 +201,11 @@ export default function HomePage() {
       </header>
 
       {/* --- MAIN CONTENT --- */}
-      {/* 🚀 FIXED: Mobile pe wahi 0 gap rahega, Laptop pe thoda sa side gap aayega (sm:px-8 lg:px-16) taaki cards kinaroo se na chipke */}
       <main className="flex-1 pb-[76px] overflow-y-auto relative z-10 px-0 sm:px-8 lg:px-16 xl:px-32">
         {renderTabContent()}
       </main>
 
       {/* --- BOTTOM NAVBAR --- */}
-      {/* 🚀 FIXED: Navbar wapas edge-to-edge stretch kar di gayi hai, just like Instagram/Twitter mobile app */}
       <nav className="fixed bottom-0 left-0 w-full bg-white/95 dark:bg-[#0b0b0e]/95 backdrop-blur-2xl border-t border-slate-200 dark:border-white/5 z-40 transition-colors duration-300 shadow-[0_-10px_30px_#00000008] dark:shadow-none pb-[env(safe-area-inset-bottom)]">
         <div className="flex justify-around items-center h-[60px] px-2">
           
@@ -165,6 +240,51 @@ export default function HomePage() {
 
         </div>
       </nav>
+
+      {/* 🚀 NOTIFICATION MODAL PANEL */}
+      {mounted && isNotifOpen && createPortal(
+        <div className="fixed inset-0 z-[99999] flex justify-end bg-black/60 dark:bg-black/80 backdrop-blur-sm sm:items-center sm:justify-center transition-all animate-in fade-in">
+          <div className="bg-white dark:bg-[#1c1c1e] w-full sm:w-[450px] h-[85vh] sm:h-[600px] mt-auto sm:mt-0 rounded-t-[2.5rem] sm:rounded-[2rem] flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-bottom-full sm:slide-in-from-right-8 duration-300 border border-slate-200 dark:border-white/10">
+            <div className="shrink-0 flex justify-between items-center px-6 py-5 border-b border-slate-100 dark:border-white/10">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Notifications</h3>
+              <button onClick={() => setIsNotifOpen(false)} className="cursor-pointer text-slate-500 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 w-9 h-9 rounded-full flex items-center justify-center transition-colors outline-none [-webkit-tap-highlight-color:transparent]">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {notifications.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center opacity-50 px-6">
+                  <span className="text-6xl mb-4">🔔</span>
+                  <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-1">No notifications yet</h4>
+                  <p className="text-sm font-medium text-slate-500">When someone likes your recipe or follows you, it will show up here.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {notifications.map((notif) => (
+                    <div key={notif.id} className={`flex items-center gap-4 p-4 rounded-2xl transition-colors ${!notif.is_read ? 'bg-orange-50 dark:bg-orange-500/10' : 'hover:bg-slate-50 dark:hover:bg-white/5'}`}>
+                      <div className="w-12 h-12 rounded-full bg-linear-to-tr from-orange-500 to-red-500 shrink-0 flex items-center justify-center text-white text-lg font-bold">
+                        {notif.actorName.charAt(0)}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm text-slate-800 dark:text-slate-200 leading-snug">
+                          <span className="font-extrabold text-slate-900 dark:text-white mr-1">{notif.actorName}</span>
+                          {notif.type === 'follow' ? 'started following you.' : `liked your recipe "${notif.recipeName}".`}
+                        </p>
+                        <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wider">
+                          {new Date(notif.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="shrink-0 pl-2">
+                        {notif.type === 'follow' ? <span className="text-2xl">👤</span> : <span className="text-2xl text-red-500">❤️</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
     </div>
   );
 }

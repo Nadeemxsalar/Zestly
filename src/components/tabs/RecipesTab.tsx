@@ -8,6 +8,11 @@ interface RecipesTabProps {
   user: any;
 }
 
+interface CommentData {
+  author: string;
+  text: string;
+}
+
 interface Recipe {
   id: string;
   name: string;
@@ -41,6 +46,14 @@ export default function RecipesTab({ user }: RecipesTabProps) {
   const [currentStep, setCurrentStep] = useState(-1);
 
   const [mounted, setMounted] = useState(false);
+  
+  // 🚀 FIXED: Added Missing Toast State and Function
+  const [toast, setToast] = useState({ isOpen: false, message: "" });
+  
+  const showToast = (message: string) => {
+    setToast({ isOpen: true, message });
+    setTimeout(() => setToast({ isOpen: false, message: "" }), 3000);
+  };
 
   // --- ADVANCED FORM STATES ---
   const [newName, setNewName] = useState("");
@@ -55,6 +68,9 @@ export default function RecipesTab({ user }: RecipesTabProps) {
   const [newIngredients, setNewIngredients] = useState<string[]>([""]);
   const [newSteps, setNewSteps] = useState<string[]>([""]);
   
+  // Image Upload Toggle States
+  const [imageInputMode, setImageInputMode] = useState<"upload" | "link">("upload");
+  const [imageUrlLink, setImageUrlLink] = useState("");
   const [imageFile, setImageFile] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
@@ -97,8 +113,8 @@ export default function RecipesTab({ user }: RecipesTabProps) {
 
   const checkAuth = () => {
     if (!user) {
-      alert("Chef, you need to log in to use this feature! 🔒👨‍🍳");
-      router.push("/login");
+      showToast("Chef, you need to log in to use this feature! 🔒👨‍🍳");
+      setTimeout(() => router.push("/login"), 1500);
       return false;
     }
     return true;
@@ -118,7 +134,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
 
   const handleShare = (postName: string) => {
     navigator.clipboard.writeText(`Check out this amazing recipe: ${postName} on Zestly!`);
-    alert(`Link for ${postName} copied to clipboard! 🚀`);
+    showToast(`Link for ${postName} copied! 🚀`);
   };
 
   const handleDelete = async (id: string) => {
@@ -126,6 +142,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     if (confirm("Are you sure you want to delete this recipe?")) {
       setRecipes(recipes.filter(r => r.id !== id)); 
       await supabase.from("recipes").delete().eq("id", id); 
+      showToast("Recipe deleted successfully! 🗑️");
     }
   };
 
@@ -171,7 +188,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files?.[0]) processImageFile(e.dataTransfer.files[0]);
+    if (imageInputMode === "upload" && e.dataTransfer.files?.[0]) processImageFile(e.dataTransfer.files[0]);
   };
 
   const handleIngredientChange = (index: number, value: string) => {
@@ -193,7 +210,9 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     setIsSaving(true);
     let finalImageUrl = undefined;
 
-    if (imageFile) {
+    if (imageInputMode === "link" && imageUrlLink.trim()) {
+      finalImageUrl = imageUrlLink.trim();
+    } else if (imageInputMode === "upload" && imageFile) {
       finalImageUrl = imageFile; 
       try {
         const fetchRes = await fetch(imageFile);
@@ -246,11 +265,14 @@ export default function RecipesTab({ user }: RecipesTabProps) {
         authorId: dbRecipe.author_id
       };
       setRecipes([addedRecipe, ...recipes]);
+      showToast("Recipe added successfully! 🎉");
+    } else {
+      showToast("Failed to add recipe. Please try again.");
     }
 
     setIsAddModalOpen(false); 
     setNewName(""); setNewTime(""); setNewCalories(""); setNewProtein(""); setNewCarbs(""); setNewFats("");
-    setNewIngredients([""]); setNewSteps([""]); setImageFile(null); setIsSaving(false);
+    setNewIngredients([""]); setNewSteps([""]); setImageFile(null); setImageUrlLink(""); setIsSaving(false);
   };
 
   const openCookMode = (recipe: Recipe) => { setCookModeRecipe(recipe); setPortions(1); setCurrentStep(-1); };
@@ -331,7 +353,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
           <p className="font-bold">Loading your Cloud Recipes...</p>
         </div>
       ) : (
-        <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 gap-10 sm:gap-7 relative z-10 mt-6 px-1">
+        <div className="w-full max-w-5xl flex flex-col gap-6 sm:grid sm:grid-cols-2 sm:gap-7 relative z-10 mt-6 px-1">
           {filteredAndSortedRecipes.length === 0 ? (
             <div className="col-span-full flex flex-col items-center justify-center text-center py-20 px-6 border-2 border-dashed border-slate-300 dark:border-white/10 bg-white dark:bg-white/[0.01] rounded-[2.5rem] animate-in zoom-in-95 duration-500 mx-4">
               <span className="text-6xl mb-5 opacity-50 drop-shadow-md">👨‍🍳</span>
@@ -342,67 +364,69 @@ export default function RecipesTab({ user }: RecipesTabProps) {
             </div>
           ) : (
             filteredAndSortedRecipes.map((recipe) => (
-              <div key={recipe.id} className="mb-6 sm:mb-0 sm:bg-white sm:dark:bg-[#0b0b0e] sm:border sm:border-slate-200/80 sm:dark:border-white/10 sm:rounded-[2.5rem] sm:overflow-hidden sm:shadow-[0_8px_35px_#0000000d] sm:dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] group/card flex flex-col">
-                
-                {/* Image Area */}
-                <div className={`-mx-5 w-[calc(100%+40px)] sm:mx-0 sm:w-full h-[23rem] sm:h-64 relative flex items-center justify-center cursor-pointer sm:overflow-hidden ${!recipe.imageUrl ? `bg-linear-to-br ${recipe.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
-                  {recipe.imageUrl ? (
-                    <>
-                      <div className="absolute inset-0 bg-cover bg-center blur-xl opacity-20 sm:group-hover/card:opacity-40 sm:group-hover/card:scale-110 transition-all duration-700" style={{ backgroundImage: `url(${recipe.imageUrl})` }}></div>
-                      <img src={recipe.imageUrl} alt={recipe.name} className="relative z-10 w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" />
-                    </>
-                  ) : (
-                    <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{recipe.emoji}</span>
-                  )}
+              <div key={recipe.id} className="flex flex-col w-full px-2 sm:px-0">
+                <div className="relative bg-white dark:bg-[#0b0b0e] border border-slate-200/80 dark:border-white/10 rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden shadow-md dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col mx-2 sm:mx-0">
                   
-                  {/* Title Overlay */}
-                  <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/80 via-black/30 to-transparent p-5 pt-20 z-20">
-                    <div className="flex justify-between items-start gap-2 mb-2">
-                      <h3 className="text-white font-extrabold text-2xl leading-tight tracking-tight drop-shadow-lg">{recipe.name}</h3>
-                      <span className={`shrink-0 text-[10px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-lg border backdrop-blur-md ${recipe.type === 'Veg' ? 'bg-green-500/20 text-green-300 border-green-400/30' : 'bg-red-500/20 text-red-300 border-red-400/30'}`}>{recipe.type}</span>
-                    </div>
-                  </div>
-
-                  {/* Top Tags */}
-                  <div className="absolute top-4 left-4 flex gap-2 z-20">
-                    <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-blue-400">P</span> {recipe.macros.protein}g</span>
-                    <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-yellow-400">C</span> {recipe.macros.carbs}g</span>
-                  </div>
-
-                  {/* Top Right Action Buttons */}
-                  <div className="absolute top-4 right-4 flex flex-col gap-2.5 z-20">
-                    <button onClick={() => toggleLike(recipe.id)} className="group cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-black/80 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
-                      <svg className={`w-5 h-5 transition-transform ${recipe.isLiked ? 'fill-red-500 text-red-500 scale-110 drop-shadow-[0_0_8px_#ef444466]' : 'group-hover:text-red-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
-                    </button>
-                    <button onClick={() => handleShare(recipe.name)} className="cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-green-500 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
-                    </button>
-                    {user && user.id === recipe.authorId && (
-                      <button onClick={() => handleDelete(recipe.id)} className="cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-red-500 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                      </button>
+                  {/* Image Area */}
+                  <div className={`w-full h-[22rem] sm:h-64 relative flex items-center justify-center cursor-pointer sm:overflow-hidden ${!recipe.imageUrl ? `bg-linear-to-br ${recipe.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
+                    {recipe.imageUrl ? (
+                      <>
+                        <div className="absolute inset-0 bg-cover bg-center blur-xl opacity-20 sm:group-hover/card:opacity-40 sm:group-hover/card:scale-110 transition-all duration-700" style={{ backgroundImage: `url(${recipe.imageUrl})` }}></div>
+                        <img src={recipe.imageUrl} alt={recipe.name} className="relative z-10 w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" />
+                      </>
+                    ) : (
+                      <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{recipe.emoji}</span>
                     )}
-                  </div>
-                </div>
-
-                {/* Details Section */}
-                <div className="py-5 px-4 sm:p-5 flex-1 flex flex-col justify-between bg-transparent">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-4 text-xs font-bold text-slate-500 dark:text-slate-400">
-                      <span className="flex items-center gap-1.5"><span className="text-base">⏱️</span> {recipe.time}</span>
-                      <span className="flex items-center gap-1.5 text-orange-500 dark:text-orange-400"><span className="text-base">🔥</span> {recipe.calories} cal</span>
+                    
+                    {/* Title Overlay */}
+                    <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/80 via-black/30 to-transparent p-5 pt-20 z-20">
+                      <div className="flex justify-between items-start gap-2 mb-2">
+                        <h3 className="text-white font-extrabold text-2xl leading-tight tracking-tight drop-shadow-lg">{recipe.name}</h3>
+                        <span className={`shrink-0 text-[10px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-lg border backdrop-blur-md ${recipe.type === 'Veg' ? 'bg-green-500/20 text-green-300 border-green-400/30' : 'bg-red-500/20 text-red-300 border-red-400/30'}`}>{recipe.type}</span>
+                      </div>
                     </div>
-                    <span className={`text-[10px] font-extrabold px-3 py-1.5 rounded-full border ${recipe.difficulty === 'Easy' ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-transparent' : recipe.difficulty === 'Medium' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-transparent' : 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-transparent'}`}>
-                      {recipe.difficulty}
-                    </span>
+
+                    {/* Top Tags */}
+                    <div className="absolute top-4 left-4 flex gap-2 z-20">
+                      <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-blue-400">P</span> {recipe.macros.protein}g</span>
+                      <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-yellow-400">C</span> {recipe.macros.carbs}g</span>
+                    </div>
+
+                    {/* Top Right Action Buttons */}
+                    <div className="absolute top-4 right-4 flex flex-col gap-2.5 z-20">
+                      <button onClick={() => toggleLike(recipe.id)} className="group cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-black/80 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
+                        <svg className={`w-5 h-5 transition-transform ${recipe.isLiked ? 'fill-red-500 text-red-500 scale-110 drop-shadow-[0_0_8px_#ef444466]' : 'group-hover:text-red-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                      </button>
+                      <button onClick={() => handleShare(recipe.name)} className="cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-green-500 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+                      </button>
+                      {user && user.id === recipe.authorId && (
+                        <button onClick={() => handleDelete(recipe.id)} className="cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-red-500 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  
-                  <button onClick={() => openCookMode(recipe)} className="cursor-pointer w-full mt-6 bg-slate-900 dark:bg-white/5 hover:bg-slate-800 dark:hover:bg-orange-500 text-white font-extrabold py-4 rounded-xl transition-all duration-300 flex justify-center items-center gap-2.5 group/btn shadow-[0_4px_15px_#00000033] dark:shadow-none active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
-                    <span>Start Cooking</span>
-                    <svg className="w-5 h-5 opacity-50 group-hover/btn:opacity-100 group-hover/btn:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
-                    </svg>
-                  </button>
+
+                  {/* Details Section */}
+                  <div className="py-4 px-4 sm:p-5 flex-1 flex flex-col justify-between bg-transparent">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-4 text-xs font-bold text-slate-500 dark:text-slate-400">
+                        <span className="flex items-center gap-1.5"><span className="text-base">⏱️</span> {recipe.time}</span>
+                        <span className="flex items-center gap-1.5 text-orange-500 dark:text-orange-400"><span className="text-base">🔥</span> {recipe.calories} cal</span>
+                      </div>
+                      <span className={`text-[10px] font-extrabold px-3 py-1.5 rounded-full border ${recipe.difficulty === 'Easy' ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-transparent' : recipe.difficulty === 'Medium' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-transparent' : 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-transparent'}`}>
+                        {recipe.difficulty}
+                      </span>
+                    </div>
+                    
+                    <button onClick={() => openCookMode(recipe)} className="cursor-pointer w-full mt-4 bg-slate-900 dark:bg-white/5 hover:bg-slate-800 dark:hover:bg-orange-500 text-white font-extrabold py-3.5 rounded-xl transition-all duration-300 flex justify-center items-center gap-2.5 group/btn shadow-[0_4px_15px_#00000033] dark:shadow-none active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
+                      <span>Start Cooking</span>
+                      <svg className="w-5 h-5 opacity-50 group-hover/btn:opacity-100 group-hover/btn:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -427,35 +451,61 @@ export default function RecipesTab({ user }: RecipesTabProps) {
             <div className="flex-1 overflow-y-auto p-6 sm:px-10 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               <form onSubmit={handleAddRecipe} className="space-y-8 pb-10">
                 
-                <div 
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  onClick={() => !imageFile && !isCompressing && fileInputRef.current?.click()}
-                  className={`relative w-full aspect-video sm:h-72 rounded-[2.5rem] border-2 border-dashed transition-all flex flex-col items-center justify-center group overflow-hidden outline-none [-webkit-tap-highlight-color:transparent] ${isDragging ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10' : 'border-slate-300 dark:border-white/20 hover:border-orange-500 bg-slate-50 dark:bg-[#0c0c10] cursor-pointer'}`}
-                >
-                  <input type="file" accept="image/*" onChange={handleImageChange} ref={fileInputRef} disabled={isCompressing || isSaving} className="hidden" />
-                  
-                  {isCompressing ? (
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-                      <p className="text-orange-500 font-bold animate-pulse">Processing Image...</p>
-                    </div>
-                  ) : imageFile ? (
-                    <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-black/60">
-                      <div className="absolute inset-0 bg-cover bg-center blur-xl opacity-60 scale-110" style={{ backgroundImage: `url(${imageFile})` }}></div>
-                      <img src={imageFile} alt="Preview" className="relative z-10 w-full h-full object-contain drop-shadow-2xl p-1 rounded-xl" />
-                      <button type="button" onClick={(e) => { e.stopPropagation(); setImageFile(null); }} className="absolute top-4 right-4 bg-black/70 hover:bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md transition-all shadow-lg z-20 cursor-pointer outline-none [-webkit-tap-highlight-color:transparent]">✕</button>
+                {/* Image Upload or Paste URL Toggle */}
+                <div className="flex flex-col gap-3">
+                  <div className="flex bg-slate-100 dark:bg-white/5 p-1.5 rounded-2xl w-fit">
+                    <button type="button" onClick={() => setImageInputMode("upload")} className={`cursor-pointer px-5 py-2.5 rounded-xl text-sm font-bold transition-all outline-none [-webkit-tap-highlight-color:transparent] ${imageInputMode === 'upload' ? 'bg-white dark:bg-[#1c1c1e] shadow-sm text-orange-500' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Upload File</button>
+                    <button type="button" onClick={() => setImageInputMode("link")} className={`cursor-pointer px-5 py-2.5 rounded-xl text-sm font-bold transition-all outline-none [-webkit-tap-highlight-color:transparent] ${imageInputMode === 'link' ? 'bg-white dark:bg-[#1c1c1e] shadow-sm text-orange-500' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Paste Link</button>
+                  </div>
+
+                  {imageInputMode === "upload" ? (
+                    <div 
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      onClick={() => !imageFile && !isCompressing && fileInputRef.current?.click()}
+                      className={`relative w-full aspect-video sm:h-72 rounded-[2.5rem] border-2 border-dashed transition-all flex flex-col items-center justify-center group overflow-hidden outline-none [-webkit-tap-highlight-color:transparent] ${isDragging ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10' : 'border-slate-300 dark:border-white/20 hover:border-orange-500 bg-slate-50 dark:bg-[#0c0c10] cursor-pointer'}`}
+                    >
+                      <input type="file" accept="image/*" onChange={handleImageChange} ref={fileInputRef} disabled={isCompressing || isSaving} className="hidden" />
+                      
+                      {isCompressing ? (
+                        <div className="flex flex-col items-center gap-3">
+                          <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                          <p className="text-orange-500 font-bold animate-pulse">Processing Image...</p>
+                        </div>
+                      ) : imageFile ? (
+                        <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-black/60">
+                          <div className="absolute inset-0 bg-cover bg-center blur-xl opacity-60 scale-110" style={{ backgroundImage: `url(${imageFile})` }}></div>
+                          <img src={imageFile} alt="Preview" className="relative z-10 w-full h-full object-contain drop-shadow-2xl p-1 rounded-xl" />
+                          <button type="button" onClick={(e) => { e.stopPropagation(); setImageFile(null); }} className="absolute top-4 right-4 bg-black/70 hover:bg-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md transition-all shadow-lg z-20 cursor-pointer outline-none [-webkit-tap-highlight-color:transparent]">✕</button>
+                        </div>
+                      ) : (
+                        <>
+                          <svg className={`w-12 h-12 mb-4 text-slate-400 transition-transform duration-300 ${isDragging ? 'scale-125 text-orange-500' : 'group-hover:-translate-y-1 group-hover:text-orange-500'}`} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+                          </svg>
+                          <p className="text-slate-700 dark:text-white font-extrabold text-base">{isDragging ? 'Drop Image Here!' : 'Upload Recipe Photo'}</p>
+                          <p className="text-slate-400 text-sm mt-2 font-medium">High quality images get more likes</p>
+                        </>
+                      )}
                     </div>
                   ) : (
-                    <>
-                      <svg className={`w-12 h-12 mb-4 text-slate-400 transition-transform duration-300 ${isDragging ? 'scale-125 text-orange-500' : 'group-hover:-translate-y-1 group-hover:text-orange-500'}`} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
-                      </svg>
-                      <p className="text-slate-700 dark:text-white font-extrabold text-base">{isDragging ? 'Drop Image Here!' : 'Upload Recipe Photo'}</p>
-                      <p className="text-slate-400 text-sm mt-2 font-medium">High quality images get more likes</p>
-                    </>
+                    <div className="space-y-4">
+                      <input 
+                        type="url" 
+                        placeholder="Paste image URL here (e.g., https://example.com/food.jpg)" 
+                        value={imageUrlLink} 
+                        onChange={(e) => setImageUrlLink(e.target.value)} 
+                        disabled={isSaving} 
+                        className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white outline-none focus:border-orange-500 transition-all cursor-text placeholder:text-slate-400" 
+                      />
+                      {imageUrlLink && (
+                        <div className="relative w-full aspect-video sm:h-72 rounded-[2.5rem] border border-slate-200 dark:border-white/10 overflow-hidden bg-slate-50 dark:bg-[#0c0c10] flex items-center justify-center">
+                          <img src={imageUrlLink} alt="Link Preview" onError={(e) => { (e.target as HTMLImageElement).src = ""; setImageUrlLink(""); showToast("Invalid image link!"); }} className="w-full h-full object-cover" />
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -629,6 +679,12 @@ export default function RecipesTab({ user }: RecipesTabProps) {
         document.body
       )}
 
+      {/* 🚀 FIXED: Missing Toast Portal added here */}
+      {mounted && toast.isOpen && createPortal(
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[99999] pointer-events-none">
+          <div className="bg-slate-900 dark:bg-[#1c1c1e] text-white px-6 py-3.5 rounded-full shadow-lg text-sm font-bold border border-slate-700 dark:border-white/10">{toast.message}</div>
+        </div>, document.body
+      )}
     </div>
   );
 }
