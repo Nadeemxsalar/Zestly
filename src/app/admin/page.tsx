@@ -118,6 +118,7 @@ export default function ZestlyAdminPage() {
   const [editFormData, setEditFormData] = useState({ full_name: "", username: "", bio: "" });
 
   const [toast, setToast] = useState({ isOpen: false, message: "", type: "success" });
+  
   const showToast = (msg: string, type: "success" | "danger" = "success") => {
     setToast({ isOpen: true, message: msg, type });
     setTimeout(() => setToast({ isOpen: false, message: "", type: "success" }), 3000);
@@ -219,25 +220,18 @@ export default function ZestlyAdminPage() {
         emoji: r.emoji || "🍲",
       }));
 
-      // 🚀 ACTIVITY LOGS FIX: Combine Notifications + New Users + New Recipes
+      // Combined Activity Logs
       const combinedLogs: any[] = [];
-      
-      // 1. Notifications (Likes, Follows)
       (notifsData || []).forEach((n: NotifRow) => {
           combinedLogs.push({ id: `notif_${n.id}`, action: n.type === "like" ? "Someone liked a recipe ❤️" : "A new chef followed someone 👤", timeStr: n.created_at, type: n.type === "like" ? "success" : "info", icon: n.type === "like" ? "❤️" : "👤" });
       });
-
-      // 2. New Profiles
       (profilesData || []).slice(0, 10).forEach((u: any) => {
           combinedLogs.push({ id: `user_${u.id}`, action: `Chef ${u.full_name || 'Someone'} joined Zestly 🎉`, timeStr: u.created_at, type: "success", icon: "👋" });
       });
-
-      // 3. New Recipes
       (recipesData || []).slice(0, 10).forEach((r: any) => {
           combinedLogs.push({ id: `recipe_${r.id}`, action: `New recipe '${r.name}' published 🍲`, timeStr: r.created_at, type: "info", icon: "🍲" });
       });
 
-      // Sort logs by time and format
       combinedLogs.sort((a, b) => new Date(b.timeStr).getTime() - new Date(a.timeStr).getTime());
       const activityLogs: ActivityLog[] = combinedLogs.map(log => ({
           id: log.id, action: log.action, time: timeAgo(log.timeStr), type: log.type, icon: log.icon
@@ -333,7 +327,6 @@ export default function ZestlyAdminPage() {
     showToast("Recipe deleted successfully!", "danger");
   };
 
-  // ── 🚀 ALGORITHM & GOD MODE CONTROLS ────────────────────────────────
   const toggleFakeMode = async () => {
       const newMode = !fakeMode;
       setFakeMode(newMode);
@@ -342,7 +335,6 @@ export default function ZestlyAdminPage() {
       setUsers(users.map(u => {
           let baseFake = 0;
           if (newMode) baseFake = (u.id.charCodeAt(0) * 25) + (u.id.charCodeAt(1) * 10);
-          
           return { 
               ...u, 
               engine_followers: baseFake,
@@ -419,7 +411,7 @@ export default function ZestlyAdminPage() {
       showToast("User permanently deleted from database 🗑️", "danger");
   };
 
-  // ── Filtered Lists & ANTI-HANG LOGIC ─────────────────────────────────────
+  // ── Filtered Lists ─────────────────────────────────────
   const filteredUsers = users.filter((u) => u.full_name.toLowerCase().includes(userSearch.toLowerCase()) || u.username.toLowerCase().includes(userSearch.toLowerCase()));
   const displayUsers = filteredUsers.slice(0, 50);
 
@@ -431,12 +423,14 @@ export default function ZestlyAdminPage() {
   const graphMax = Math.max(...graphData, 1);
   const dayLabels = ["6d", "5d", "4d", "3d", "2d", "1d", "Today"];
 
-  // ── Loading ────────────────────────────────────────────
+  // ── Loading Screen ────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#07070a] gap-4">
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-[#07070a] gap-4 overflow-hidden">
         <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full animate-spin shadow-[0_0_20px_rgba(249,115,22,0.5)]"></div>
-        <p className="text-orange-400 font-bold animate-pulse tracking-widest text-sm uppercase">Verifying Admin...</p>
+        <p className="text-orange-400 font-bold animate-pulse tracking-widest text-sm uppercase">
+            Verifying Admin...
+        </p>
       </div>
     );
   }
@@ -445,54 +439,81 @@ export default function ZestlyAdminPage() {
 
   const initial = adminUser?.user_metadata?.full_name?.charAt(0).toUpperCase() || adminUser?.email?.charAt(0).toUpperCase() || "A";
 
-  // ── NAV ITEMS ──────────────────────────────────────────
   const navItems = [
     { id: "overview", label: "Overview", icon: "📊" },
     { id: "users", label: "Users", icon: "👥" },
     { id: "recipes", label: "Recipes", icon: "🍲" },
-    { id: "verification", label: "Requests", icon: "🛡️" }, // 🚀 NEW TAB FOR REQUESTS
+    { id: "verification", label: "Requests", icon: "🛡️" }, 
     { id: "algorithm", label: "God Mode", icon: "⚡" }, 
     { id: "logs", label: "Activity", icon: "📋" },
   ] as const;
 
+  // 🚀 FIXED: WRAPPED ENTIRE RETURN IN A FRAGMENT TO PREVENT SYNTAX ERRORS
   return (
-    <div className="min-h-screen bg-[#07070a] text-white font-sans selection:bg-orange-500/30 relative overflow-x-hidden">
-      <div className="fixed top-0 left-0 w-full h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-900/20 via-transparent to-transparent pointer-events-none z-0" />
+    <>
+      <div className="h-screen w-full bg-[#07070a] text-white font-sans selection:bg-orange-500/30 relative overflow-hidden flex flex-col lg:flex-row">
+        
+        {/* Ambient glow (Fixed in background) */}
+        <div className="absolute top-0 left-0 w-full h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-900/20 via-transparent to-transparent pointer-events-none z-0" />
 
-      <div className="relative z-10 flex flex-col lg:flex-row min-h-screen">
-
-        <aside className="hidden lg:flex flex-col w-64 xl:w-72 shrink-0 bg-[#0b0b0f]/80 backdrop-blur-xl border-r border-white/5 min-h-screen sticky top-0 h-screen overflow-y-auto">
-          <div className="px-6 py-7 border-b border-white/5">
+        {/* ══════════════════════════════════════
+            SIDEBAR (Desktop Only)
+        ══════════════════════════════════════ */}
+        <aside className="hidden lg:flex flex-col w-64 xl:w-72 shrink-0 bg-[#0b0b0f]/80 backdrop-blur-xl border-r border-white/5 h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] z-20">
+          
+          <div className="px-6 py-7 border-b border-white/5 sticky top-0 bg-[#0b0b0f] z-10">
             <button onClick={() => router.push("/")} className="flex items-center gap-3 group outline-none [-webkit-tap-highlight-color:transparent]">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-lg font-black shadow-[0_0_15px_rgba(249,115,22,0.4)]">Z</div>
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-lg font-black shadow-[0_0_15px_rgba(249,115,22,0.4)]">
+                Z
+              </div>
               <div className="text-left">
-                <p className="text-white font-black text-lg leading-tight group-hover:text-orange-400 transition-colors">Zestly</p>
-                <p className="text-orange-500 text-[10px] font-bold uppercase tracking-widest">Admin Panel</p>
+                <p className="text-white font-black text-lg leading-tight group-hover:text-orange-400 transition-colors">
+                  Zestly
+                </p>
+                <p className="text-orange-500 text-[10px] font-bold uppercase tracking-widest">
+                  Admin Panel
+                </p>
               </div>
             </button>
           </div>
 
-          <nav className="flex-1 py-6 px-3 space-y-1">
+          <nav className="flex-1 py-6 px-3 space-y-1 relative z-0">
             {navItems.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setActiveSection(item.id as any)}
-                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl font-bold text-sm transition-all outline-none [-webkit-tap-highlight-color:transparent] ${
-                  activeSection === item.id ? "bg-orange-500/15 text-orange-400 border border-orange-500/25 shadow-[0_0_20px_rgba(249,115,22,0.1)]" : "text-slate-400 hover:text-white hover:bg-white/5"
+                className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl font-bold text-sm transition-all outline-none [-webkit-tap-highlight-color:transparent] cursor-pointer ${
+                  activeSection === item.id 
+                    ? "bg-orange-500/15 text-orange-400 border border-orange-500/25 shadow-[0_0_20px_rgba(249,115,22,0.1)]" 
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
                 }`}
               >
                 <span className="text-lg">{item.icon}</span>
                 {item.label}
-                {item.id === "users" && <span className="ml-auto bg-orange-500/20 text-orange-400 text-[10px] px-2 py-0.5 rounded-full font-black">{metrics.totalUsers}</span>}
-                {item.id === "recipes" && <span className="ml-auto bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full font-black">{metrics.totalRecipes}</span>}
-                {item.id === "verification" && pendingRequests.length > 0 && <span className="ml-auto bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black shadow-[0_0_10px_#3b82f6]">{pendingRequests.length} Req</span>}
+                {item.id === "users" && (
+                  <span className="ml-auto bg-orange-500/20 text-orange-400 text-[10px] px-2 py-0.5 rounded-full font-black">
+                    {metrics.totalUsers}
+                  </span>
+                )}
+                {item.id === "recipes" && (
+                  <span className="ml-auto bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full font-black">
+                    {metrics.totalRecipes}
+                  </span>
+                )}
+                {item.id === "verification" && pendingRequests.length > 0 && (
+                  <span className="ml-auto bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black shadow-[0_0_10px_#3b82f6]">
+                    {pendingRequests.length} Req
+                  </span>
+                )}
               </button>
             ))}
           </nav>
 
-          <div className="p-4 border-t border-white/5">
+          <div className="p-4 border-t border-white/5 sticky bottom-0 bg-[#0b0b0f] z-10">
             <div className="bg-white/[0.03] border border-orange-500/20 rounded-2xl p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center font-black text-sm shadow-inner shrink-0">{initial}</div>
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center font-black text-sm shadow-inner shrink-0">
+                {initial}
+              </div>
               <div className="min-w-0 text-left">
                 <p className="text-[10px] text-orange-400 font-bold uppercase tracking-wider">Super Admin</p>
                 <p className="text-white font-black text-sm truncate">{adminUser?.user_metadata?.full_name || "Head Chef"}</p>
@@ -502,11 +523,17 @@ export default function ZestlyAdminPage() {
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0 flex flex-col">
-          <header className="sticky top-0 z-30 bg-[#07070a]/80 backdrop-blur-xl border-b border-white/5 px-4 sm:px-6 py-4 flex justify-between items-center gap-4">
+        {/* ══════════════════════════════════════
+            MAIN AREA
+        ══════════════════════════════════════ */}
+        <main className="flex-1 flex flex-col h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] relative z-10 scroll-smooth">
+          
+          <header className="sticky top-0 z-40 bg-[#07070a]/90 backdrop-blur-xl border-b border-white/5 px-4 sm:px-6 py-4 flex justify-between items-center gap-4">
             <div className="flex items-center gap-3">
-              <button onClick={() => router.push("/")} className="lg:hidden w-9 h-9 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-xl transition-colors outline-none">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+              <button onClick={() => router.push("/")} className="lg:hidden w-9 h-9 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-xl transition-colors outline-none cursor-pointer">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
               </button>
               <div>
                 <h1 className="text-white font-black text-lg leading-tight">
@@ -520,22 +547,32 @@ export default function ZestlyAdminPage() {
               <div className="hidden sm:flex items-center gap-2 bg-white/[0.03] border border-orange-500/20 px-3 py-2 rounded-xl text-xs font-bold text-orange-400">
                 <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.8)]" /> Live
               </div>
-              <button onClick={fetchDashboardData} disabled={isRefreshing} className="w-9 h-9 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-xl transition-colors outline-none disabled:opacity-50">
-                <svg className={`w-4 h-4 text-white ${isRefreshing ? "animate-spin" : ""}`} fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0115-2M20 15a9 9 0 01-15 2" /></svg>
+              <button onClick={fetchDashboardData} disabled={isRefreshing} className="w-9 h-9 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-xl transition-colors outline-none disabled:opacity-50 cursor-pointer">
+                <svg className={`w-4 h-4 text-white ${isRefreshing ? "animate-spin" : ""}`} fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0115-2M20 15a9 9 0 01-15 2" />
+                </svg>
               </button>
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center font-black text-sm shadow-[0_0_10px_rgba(249,115,22,0.4)]">{initial}</div>
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center font-black text-sm shadow-[0_0_10px_rgba(249,115,22,0.4)]">
+                {initial}
+              </div>
             </div>
           </header>
 
-          <div className="lg:hidden flex gap-1 px-4 py-3 border-b border-white/5 overflow-x-auto [&::-webkit-scrollbar]:hidden">
+          <div className="lg:hidden sticky top-[72px] z-30 bg-[#07070a]/95 backdrop-blur-xl flex gap-1 px-4 py-3 border-b border-white/5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {navItems.map((item) => (
-              <button key={item.id} onClick={() => setActiveSection(item.id as any)} className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all outline-none [-webkit-tap-highlight-color:transparent] ${activeSection === item.id ? "bg-orange-500/15 text-orange-400 border border-orange-500/25" : "text-slate-500 bg-white/[0.03]"}`}>
+              <button 
+                key={item.id} 
+                onClick={() => setActiveSection(item.id as any)} 
+                className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all outline-none [-webkit-tap-highlight-color:transparent] cursor-pointer ${
+                  activeSection === item.id ? "bg-orange-500/15 text-orange-400 border border-orange-500/25" : "text-slate-500 bg-white/[0.03]"
+                }`}
+              >
                 {item.icon} {item.label}
               </button>
             ))}
           </div>
 
-          <div className="flex-1 p-4 sm:p-6 xl:p-8 space-y-6 pb-20">
+          <div className="p-4 sm:p-6 xl:p-8 space-y-6 pb-24">
 
             {/* ════════════════════════════════════
                 OVERVIEW SECTION
@@ -555,13 +592,16 @@ export default function ZestlyAdminPage() {
                       <div className={`absolute -right-3 -top-3 w-20 h-20 bg-${m.color}-500/10 rounded-full blur-xl group-hover:bg-${m.color}-500/20 transition-all pointer-events-none`} />
                       <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-2">{m.label}</p>
                       <p className="text-3xl sm:text-4xl font-black text-white">{m.value}</p>
-                      <p className="text-green-400 text-[11px] font-bold mt-2 flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>{m.sub}</p>
+                      <p className="text-green-400 text-[11px] font-bold mt-2 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>{m.sub}
+                      </p>
                       <div className="absolute top-4 right-4 text-2xl opacity-60">{m.icon}</div>
                     </div>
                   ))}
                 </div>
-                {/* Chart & Breakdowns */}
+                
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+                  {/* Chart */}
                   <div className="lg:col-span-2 bg-white/[0.02] border border-white/5 rounded-[2rem] p-5 sm:p-7">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-7">
                       <div>
@@ -586,13 +626,22 @@ export default function ZestlyAdminPage() {
                       {dayLabels.map((d, i) => (<span key={i} className={i === 6 ? "text-orange-500" : ""}>{d}</span>))}
                     </div>
                   </div>
+
+                  {/* App Controls */}
                   <div className="bg-white/[0.02] border border-white/5 rounded-[2rem] p-5 sm:p-7 flex flex-col">
                     <h3 className="text-white font-black text-lg mb-6">App Controls</h3>
                     <div className="space-y-5 flex-1">
-                      {[{ label: "Maintenance Mode", sub: "Lock app", value: maintenanceMode, set: setMaintenanceMode, activeColor: "bg-red-500" }, { label: "Allow Signups", sub: "Open for chefs", value: allowSignups, set: setAllowSignups, activeColor: "bg-green-500" }, { label: "AI Recipe Bot", sub: "AI suggestions", value: aiBot, set: setAiBot, activeColor: "bg-orange-500" }].map((ctrl, i) => (
+                      {[
+                        { label: "Maintenance Mode", sub: "Lock app", value: maintenanceMode, set: setMaintenanceMode, activeColor: "bg-red-500" }, 
+                        { label: "Allow Signups", sub: "Open for chefs", value: allowSignups, set: setAllowSignups, activeColor: "bg-green-500" }, 
+                        { label: "AI Recipe Bot", sub: "AI suggestions", value: aiBot, set: setAiBot, activeColor: "bg-orange-500" }
+                      ].map((ctrl, i) => (
                         <div key={i} className="flex justify-between items-center">
-                          <div><p className="text-white font-bold text-sm">{ctrl.label}</p><p className="text-slate-500 text-[11px] mt-0.5">{ctrl.sub}</p></div>
-                          <button onClick={() => ctrl.set(!ctrl.value)} className={`w-13 h-7 rounded-full p-1 transition-colors duration-300 outline-none shrink-0 ml-4 ${ctrl.value ? ctrl.activeColor : "bg-white/10"}`} style={{ width: 52 }}>
+                          <div>
+                            <p className="text-white font-bold text-sm">{ctrl.label}</p>
+                            <p className="text-slate-500 text-[11px] mt-0.5">{ctrl.sub}</p>
+                          </div>
+                          <button onClick={() => ctrl.set(!ctrl.value)} className={`w-13 h-7 rounded-full p-1 transition-colors duration-300 outline-none shrink-0 ml-4 cursor-pointer ${ctrl.value ? ctrl.activeColor : "bg-white/10"}`} style={{ width: 52 }}>
                             <div className={`w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-300 ${ctrl.value ? "translate-x-6" : "translate-x-0"}`} />
                           </button>
                         </div>
@@ -621,12 +670,13 @@ export default function ZestlyAdminPage() {
                     {filteredUsers.length} / {metrics.totalUsers} chefs
                   </div>
                 </div>
+                
                 {filteredUsers.length > 50 && (<p className="text-xs text-orange-400 font-bold px-2">Showing top 50 matches. Refine your search to find more.</p>)}
 
                 <div className="hidden md:block bg-white/[0.02] border border-white/5 rounded-[2rem] overflow-hidden">
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                     <table className="w-full text-left">
-                      <thead className="border-b border-white/5">
+                      <thead className="border-b border-white/5 bg-[#0b0b0e]">
                         <tr className="text-slate-500 text-[10px] uppercase tracking-widest">
                           <th className="px-6 py-4 font-bold">Chef</th>
                           <th className="px-4 py-4 font-bold text-center">Verified</th>
@@ -646,7 +696,10 @@ export default function ZestlyAdminPage() {
                                     {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" /> : u.full_name.charAt(0).toUpperCase()}
                                   </div>
                                   <div>
-                                    <p className="text-white font-bold text-sm leading-tight flex items-center gap-1">{u.full_name} {u.is_verified && <svg className="w-3.5 h-3.5 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>}</p>
+                                    <p className="text-white font-bold text-sm leading-tight flex items-center gap-1">
+                                      {u.full_name} 
+                                      {u.is_verified && <svg className="w-3.5 h-3.5 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>}
+                                    </p>
                                     <p className="text-slate-500 text-[11px]">@{u.username}</p>
                                   </div>
                                 </div>
@@ -679,7 +732,10 @@ export default function ZestlyAdminPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
-                                <p className="text-white font-black text-base truncate flex items-center gap-1">{u.full_name}{u.is_verified && <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>}</p>
+                                <p className="text-white font-black text-base truncate flex items-center gap-1">
+                                  {u.full_name}
+                                  {u.is_verified && <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>}
+                                </p>
                                 <p className="text-slate-500 text-xs">@{u.username}</p>
                               </div>
                             </div>
@@ -706,8 +762,7 @@ export default function ZestlyAdminPage() {
             ════════════════════════════════════ */}
             {activeSection === "recipes" && (
               <div className="space-y-5">
-                 {/* Omitted Recipe search code to save space, but it stays exactly same in actual implementation */}
-                 <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                   <div className="relative flex-1 w-full">
                     <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                     <input type="text" placeholder="Search recipes..." value={recipeSearch} onChange={(e) => setRecipeSearch(e.target.value)} className="w-full bg-white/[0.03] border border-white/10 rounded-2xl pl-11 pr-4 py-3.5 text-white text-sm outline-none focus:border-orange-500/40 placeholder:text-slate-500 transition-colors" />
@@ -720,9 +775,9 @@ export default function ZestlyAdminPage() {
                 {filteredRecipes.length > 50 && (<p className="text-xs text-orange-400 font-bold px-2">Showing top 50 matches.</p>)}
 
                 <div className="hidden lg:block bg-white/[0.02] border border-white/5 rounded-[2rem] overflow-hidden">
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                     <table className="w-full text-left">
-                      <thead className="border-b border-white/5">
+                      <thead className="border-b border-white/5 bg-[#0b0b0e]">
                         <tr className="text-slate-500 text-[10px] uppercase tracking-widest">
                           <th className="px-6 py-4 font-bold">Recipe</th>
                           <th className="px-4 py-4 font-bold">Author</th>
@@ -759,7 +814,7 @@ export default function ZestlyAdminPage() {
                               </td>
                               <td className="px-4 py-3.5"><span className="text-slate-500 text-xs">{timeAgo(r.created_at)}</span></td>
                               <td className="px-4 py-3.5 text-right">
-                                <button onClick={() => deleteRecipe(r.id)} className="text-[11px] font-bold px-3 py-1.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20 transition-all outline-none">Delete</button>
+                                <button onClick={() => deleteRecipe(r.id)} className="text-[11px] font-bold px-3 py-1.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20 transition-all outline-none cursor-pointer">Delete</button>
                               </td>
                             </tr>
                           ))
@@ -768,6 +823,38 @@ export default function ZestlyAdminPage() {
                     </table>
                   </div>
                 </div>
+
+                <div className="md:hidden space-y-3">
+                  {displayRecipes.length === 0 ? (
+                    <div className="text-center py-16 text-slate-500 bg-white/[0.02] rounded-3xl border border-white/5 text-sm">No recipes found</div>
+                  ) : (
+                    displayRecipes.map((r) => (
+                      <div key={r.id} className="bg-white/[0.02] border border-white/5 rounded-3xl overflow-hidden hover:border-orange-500/20 transition-all">
+                        <div className="w-full h-36 bg-white/5 flex items-center justify-center relative overflow-hidden">
+                          {r.image_url ? (
+                            <img src={r.image_url} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-5xl">{r.emoji}</span>
+                          )}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                          <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end">
+                            <p className="text-white font-black text-base leading-tight">{r.name}</p>
+                            <button onClick={() => deleteRecipe(r.id)} className="w-8 h-8 bg-red-500/80 rounded-xl flex items-center justify-center text-white text-xs transition-all hover:bg-red-500 shrink-0 outline-none cursor-pointer">
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                        <div className="p-3 flex items-center justify-between flex-wrap gap-2">
+                          <p className="text-slate-400 text-xs font-medium">{r.author_name} • {timeAgo(r.created_at)}</p>
+                          <div className="flex items-center gap-3 text-xs font-bold">
+                            <span className="text-red-400">❤️ {r.likes_count}</span>
+                            <span className="text-blue-400">💬 {r.comments_count}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             )}
 
@@ -775,41 +862,41 @@ export default function ZestlyAdminPage() {
                 🛡️ NEW: VERIFICATION REQUESTS
             ════════════════════════════════════ */}
             {activeSection === "verification" && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/20 rounded-[2rem] p-6 relative overflow-hidden flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div className="absolute right-0 top-0 w-64 h-64 bg-cyan-500/20 blur-[80px] pointer-events-none"></div>
-                        <div>
-                            <h2 className="text-2xl font-black text-white flex items-center gap-2">Verification Queue 🛡️</h2>
-                            <p className="text-blue-200 text-sm mt-1 max-w-md">Review users who have applied for the Master Chef Gold Badge.</p>
-                        </div>
-                    </div>
-
-                    {pendingRequests.length === 0 ? (
-                        <div className="bg-white/[0.02] border border-white/5 rounded-[2rem] p-10 text-center">
-                            <span className="text-4xl block mb-4 opacity-50">✅</span>
-                            <p className="text-white font-black text-xl">All caught up!</p>
-                            <p className="text-slate-500 text-sm mt-1">No pending verification requests.</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {pendingRequests.map(req => (
-                                <div key={req.id} className="bg-white/[0.02] border border-white/5 p-5 rounded-[2rem] flex flex-col items-center text-center hover:border-blue-500/30 transition-all">
-                                    <div className="w-20 h-20 rounded-full overflow-hidden bg-white/10 mb-4 border-2 border-blue-500/30">
-                                        {req.avatar_url ? <img src={req.avatar_url} className="w-full h-full object-cover"/> : <span className="flex items-center justify-center w-full h-full text-white font-black text-2xl">{req.full_name.charAt(0)}</span>}
-                                    </div>
-                                    <h4 className="text-white font-bold text-lg leading-tight">{req.full_name}</h4>
-                                    <p className="text-slate-500 text-xs mb-3">@{req.username}</p>
-                                    <p className="text-blue-400 text-xs font-bold bg-blue-500/10 px-3 py-1 rounded-lg mb-5 border border-blue-500/20">Applied for Badge</p>
-                                    
-                                    <div className="flex gap-3 w-full">
-                                        <button onClick={() => toggleVerify(req.id, false)} className="flex-1 py-2.5 rounded-xl bg-green-500 text-white font-black text-sm hover:scale-[1.02] active:scale-95 transition-all shadow-md">Approve</button>
-                                        <button onClick={() => rejectVerify(req.id)} className="flex-1 py-2.5 rounded-xl bg-white/5 text-red-400 font-bold text-sm hover:bg-red-500/10 transition-all border border-red-500/20">Reject</button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/20 rounded-[2rem] p-6 relative overflow-hidden flex flex-col md:flex-row justify-between items-center gap-6">
+                  <div className="absolute right-0 top-0 w-64 h-64 bg-cyan-500/20 blur-[80px] pointer-events-none"></div>
+                  <div>
+                    <h2 className="text-2xl font-black text-white flex items-center gap-2">Verification Queue 🛡️</h2>
+                    <p className="text-blue-200 text-sm mt-1 max-w-md">Review users who have applied for the Master Chef Gold Badge.</p>
+                  </div>
                 </div>
+
+                {pendingRequests.length === 0 ? (
+                  <div className="bg-white/[0.02] border border-white/5 rounded-[2rem] p-10 text-center">
+                    <span className="text-4xl block mb-4 opacity-50">✅</span>
+                    <p className="text-white font-black text-xl">All caught up!</p>
+                    <p className="text-slate-500 text-sm mt-1">No pending verification requests.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {pendingRequests.map(req => (
+                      <div key={req.id} className="bg-white/[0.02] border border-white/5 p-5 rounded-[2rem] flex flex-col items-center text-center hover:border-blue-500/30 transition-all">
+                        <div className="w-20 h-20 rounded-full overflow-hidden bg-white/10 mb-4 border-2 border-blue-500/30">
+                          {req.avatar_url ? <img src={req.avatar_url} className="w-full h-full object-cover"/> : <span className="flex items-center justify-center w-full h-full text-white font-black text-2xl">{req.full_name.charAt(0)}</span>}
+                        </div>
+                        <h4 className="text-white font-bold text-lg leading-tight">{req.full_name}</h4>
+                        <p className="text-slate-500 text-xs mb-3">@{req.username}</p>
+                        <p className="text-blue-400 text-xs font-bold bg-blue-500/10 px-3 py-1 rounded-lg mb-5 border border-blue-500/20">Applied for Badge</p>
+                        
+                        <div className="flex gap-3 w-full">
+                          <button onClick={() => toggleVerify(req.id, false)} className="flex-1 py-2.5 rounded-xl bg-green-500 text-white font-black text-sm hover:scale-[1.02] active:scale-95 transition-all shadow-md cursor-pointer">Approve</button>
+                          <button onClick={() => rejectVerify(req.id)} className="flex-1 py-2.5 rounded-xl bg-white/5 text-red-400 font-bold text-sm hover:bg-red-500/10 transition-all border border-red-500/20 cursor-pointer">Reject</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {/* ════════════════════════════════════
@@ -818,81 +905,75 @@ export default function ZestlyAdminPage() {
             {activeSection === "algorithm" && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 
-                {/* 1. Global Fake Engagement Switch */}
                 <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-[2rem] p-6 relative overflow-hidden flex flex-col md:flex-row justify-between items-center gap-6">
-                    <div className="absolute right-0 top-0 w-64 h-64 bg-purple-500/20 blur-[80px] pointer-events-none"></div>
-                    <div>
-                        <h2 className="text-2xl font-black text-white flex items-center gap-2">Growth Algorithm Engine 🚀</h2>
-                        <p className="text-indigo-200 text-sm mt-1 max-w-md">Turn this ON to artificially boost likes, views, and followers across the app dynamically.</p>
+                  <div className="absolute right-0 top-0 w-64 h-64 bg-purple-500/20 blur-[80px] pointer-events-none"></div>
+                  <div>
+                    <h2 className="text-2xl font-black text-white flex items-center gap-2">Growth Algorithm Engine 🚀</h2>
+                    <p className="text-indigo-200 text-sm mt-1 max-w-md">Turn this ON to artificially boost likes, views, and followers across the app dynamically.</p>
+                  </div>
+                  <button onClick={toggleFakeMode} className={`relative w-20 h-10 rounded-full p-1.5 transition-all duration-300 outline-none shrink-0 border shadow-inner cursor-pointer ${fakeMode ? "bg-green-500 border-green-400 shadow-[0_0_20px_#4ade8040]" : "bg-white/10 border-white/5"}`}>
+                    <div className={`w-7 h-7 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center text-[10px] font-black ${fakeMode ? "translate-x-10 text-green-500" : "translate-x-0 text-slate-500"}`}>
+                      {fakeMode ? "ON" : "OFF"}
                     </div>
-                    <button onClick={toggleFakeMode} className={`relative w-20 h-10 rounded-full p-1.5 transition-all duration-300 outline-none shrink-0 border shadow-inner ${fakeMode ? "bg-green-500 border-green-400 shadow-[0_0_20px_#4ade8040]" : "bg-white/10 border-white/5"}`}>
-                        <div className={`w-7 h-7 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center text-[10px] font-black ${fakeMode ? "translate-x-10 text-green-500" : "translate-x-0 text-slate-500"}`}>
-                            {fakeMode ? "ON" : "OFF"}
-                        </div>
-                    </button>
+                  </button>
                 </div>
 
-                {/* 3. God Mode User Manipulation */}
                 <div className="bg-white/[0.02] border border-white/5 rounded-[2rem] p-5 sm:p-7">
-                    <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-end mb-6">
-                        <div>
-                            <h3 className="text-white font-black text-xl flex items-center gap-2">User God Mode ⚡</h3>
-                            <p className="text-slate-500 text-xs mt-1">Edit profile, set custom followers, grant badge directly, or delete DP.</p>
+                  <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-end mb-6">
+                    <div>
+                      <h3 className="text-white font-black text-xl flex items-center gap-2">User God Mode ⚡</h3>
+                      <p className="text-slate-500 text-xs mt-1">Edit profile, set custom followers, grant badge directly, or delete DP.</p>
+                    </div>
+                    <input type="text" placeholder="Search user to hack..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)} className="w-full sm:w-64 bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-indigo-500/50" />
+                  </div>
+
+                  <div className="space-y-3 pr-2 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    {displayUsers.length === 0 ? (
+                      <p className="text-center text-slate-500 py-10">No users found.</p>
+                    ) : (
+                      displayUsers.map((u) => (
+                        <div key={u.id} className="bg-black/40 border border-white/5 p-4 rounded-2xl flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between hover:border-indigo-500/30 transition-all">
+                          
+                          <div className="flex items-center gap-3 w-full xl:w-1/4">
+                            <div className="relative">
+                              <div className="w-12 h-12 rounded-full overflow-hidden bg-white/10 flex items-center justify-center font-black text-xl border border-white/10">
+                                {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover"/> : u.full_name.charAt(0)}
+                              </div>
+                              {u.is_verified && <div className="absolute -bottom-1 -right-1 bg-white rounded-full"><svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></div>}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-white font-bold truncate flex items-center gap-1">{u.full_name}</p>
+                              <p className="text-slate-400 text-xs truncate">@{u.username}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto justify-end">
+                            <div className="flex items-center gap-2 bg-white/[0.03] border border-white/10 rounded-xl p-2 shrink-0">
+                              <span className="text-[10px] text-slate-400 font-bold uppercase w-12 text-center text-wrap">Admin Bonus</span>
+                              <input 
+                                type="number" 
+                                value={u.bonus_followers} 
+                                onChange={(e) => handleBonusFollowersChange(u.id, e.target.value)}
+                                className="w-20 bg-black/50 border border-white/10 rounded-lg px-2 py-1.5 text-center font-black text-sm text-green-400 outline-none focus:border-green-500"
+                              />
+                              <div className="text-[10px] text-slate-500 flex flex-col text-right pr-2 min-w-[70px]">
+                                <span className="text-orange-400 font-bold" title="Total Followers (Real + Bonus + Engine)">Total: {formatNum(u.followers_count)}</span>
+                                <span title="Real Organic Followers">Real: {u.real_followers}</span>
+                              </div>
+                            </div>
+
+                            <button onClick={() => toggleVerify(u.id, u.is_verified)} className={`cursor-pointer px-3 py-2 text-[11px] font-bold rounded-xl transition-all ${u.is_verified ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30 hover:bg-orange-500 hover:text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'}`}>
+                              {u.is_verified ? "Revoke Badge" : "Give Badge"}
+                            </button>
+                            <button onClick={() => handleEditUserClick(u)} className="cursor-pointer px-3 py-2 bg-white/5 hover:bg-white/10 text-white text-[11px] font-bold rounded-xl transition-all">Edit</button>
+                            <button onClick={() => removeAvatar(u.id)} disabled={!u.avatar_url} className="cursor-pointer px-3 py-2 bg-yellow-500/10 text-yellow-500 disabled:opacity-30 hover:bg-yellow-500 hover:text-black text-[11px] font-bold rounded-xl transition-all">Del DP</button>
+                            <button onClick={() => fullyDeleteUser(u.id)} className="cursor-pointer px-3 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-[11px] font-bold rounded-xl transition-all">Ban</button>
+                          </div>
                         </div>
-                        <input type="text" placeholder="Search user to hack..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)} className="w-full sm:w-64 bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-indigo-500/50" />
-                    </div>
-
-                    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden">
-                        {displayUsers.length === 0 ? (
-                            <p className="text-center text-slate-500 py-10">No users found.</p>
-                        ) : (
-                            displayUsers.map((u) => (
-                                <div key={u.id} className="bg-black/40 border border-white/5 p-4 rounded-2xl flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between hover:border-indigo-500/30 transition-all">
-                                    
-                                    <div className="flex items-center gap-3 w-full xl:w-1/4">
-                                        <div className="relative">
-                                            <div className="w-12 h-12 rounded-full overflow-hidden bg-white/10 flex items-center justify-center font-black text-xl border border-white/10">
-                                                {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover"/> : u.full_name.charAt(0)}
-                                            </div>
-                                            {u.is_verified && <div className="absolute -bottom-1 -right-1 bg-white rounded-full"><svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></div>}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="text-white font-bold truncate flex items-center gap-1">{u.full_name}</p>
-                                            <p className="text-slate-400 text-xs truncate">@{u.username}</p>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto justify-end">
-                                        
-                                        {/* EXACT Follower Control */}
-                                        <div className="flex items-center gap-2 bg-white/[0.03] border border-white/10 rounded-xl p-2 shrink-0">
-                                            <span className="text-[10px] text-slate-400 font-bold uppercase w-12 text-center text-wrap">Admin Bonus</span>
-                                            <input 
-                                                type="number" 
-                                                value={u.bonus_followers} 
-                                                onChange={(e) => handleBonusFollowersChange(u.id, e.target.value)}
-                                                className="w-20 bg-black/50 border border-white/10 rounded-lg px-2 py-1.5 text-center font-black text-sm text-green-400 outline-none focus:border-green-500"
-                                            />
-                                            <div className="text-[10px] text-slate-500 flex flex-col text-right pr-2 min-w-[70px]">
-                                                <span className="text-orange-400 font-bold" title="Total Followers (Real + Bonus + Engine)">Total: {formatNum(u.followers_count)}</span>
-                                                <span title="Real Organic Followers">Real: {u.real_followers}</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Power Action Buttons */}
-                                        <button onClick={() => toggleVerify(u.id, u.is_verified)} className={`px-3 py-2 text-[11px] font-bold rounded-xl transition-all ${u.is_verified ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30 hover:bg-orange-500 hover:text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'}`}>
-                                            {u.is_verified ? "Revoke Badge" : "Give Badge"}
-                                        </button>
-                                        <button onClick={() => handleEditUserClick(u)} className="px-3 py-2 bg-white/5 hover:bg-white/10 text-white text-[11px] font-bold rounded-xl transition-all">Edit</button>
-                                        <button onClick={() => removeAvatar(u.id)} disabled={!u.avatar_url} className="px-3 py-2 bg-yellow-500/10 text-yellow-500 disabled:opacity-30 hover:bg-yellow-500 hover:text-black text-[11px] font-bold rounded-xl transition-all">Del DP</button>
-                                        <button onClick={() => fullyDeleteUser(u.id)} className="px-3 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-[11px] font-bold rounded-xl transition-all">Ban</button>
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
+                      ))
+                    )}
+                  </div>
                 </div>
-
               </div>
             )}
 
@@ -906,16 +987,12 @@ export default function ZestlyAdminPage() {
                     <h2 className="text-white font-black text-xl">Activity Logs</h2>
                     <p className="text-slate-500 text-xs mt-0.5">Live events from your Zestly database</p>
                   </div>
-                  <button
-                    onClick={() => setLogs([])}
-                    className="text-xs font-bold px-4 py-2 rounded-xl bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white transition-all border border-white/5 outline-none [-webkit-tap-highlight-color:transparent]"
-                  >
+                  <button onClick={() => setLogs([])} className="cursor-pointer text-xs font-bold px-4 py-2 rounded-xl bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white transition-all border border-white/5 outline-none">
                     Clear
                   </button>
                 </div>
 
                 <div className="bg-[#0b0b0e] border border-white/5 rounded-[2rem] overflow-hidden font-mono">
-                  {/* Terminal header */}
                   <div className="flex items-center gap-2 px-5 py-3.5 border-b border-white/5 bg-white/[0.01]">
                     <div className="w-3 h-3 rounded-full bg-red-500/60"></div>
                     <div className="w-3 h-3 rounded-full bg-yellow-500/60"></div>
@@ -923,7 +1000,7 @@ export default function ZestlyAdminPage() {
                     <span className="text-slate-600 text-xs font-bold ml-2">zestly_engine.log</span>
                     <span className="ml-auto text-orange-500 text-xs font-bold animate-pulse">● LIVE</span>
                   </div>
-                  <div className="p-5 max-h-[520px] overflow-y-auto space-y-3 [&::-webkit-scrollbar]:hidden">
+                  <div className="p-5 overflow-y-auto space-y-3 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                     {logs.length === 0 ? (
                       <div className="text-center py-20 text-slate-600">
                         <p className="text-2xl mb-2">📭</p>
@@ -934,17 +1011,7 @@ export default function ZestlyAdminPage() {
                         <div key={log.id} className="flex items-start gap-3 bg-black/40 rounded-2xl p-3.5 border border-white/[0.04]">
                           <span className="text-lg shrink-0">{log.icon}</span>
                           <div className="flex-1 min-w-0">
-                            <span
-                              className={`text-sm font-medium leading-relaxed ${
-                                log.type === "danger"
-                                  ? "text-red-400"
-                                  : log.type === "warning"
-                                  ? "text-yellow-400"
-                                  : log.type === "success"
-                                  ? "text-green-400"
-                                  : "text-orange-400"
-                              }`}
-                            >
+                            <span className={`text-sm font-medium leading-relaxed ${log.type === "danger" ? "text-red-400" : log.type === "warning" ? "text-yellow-400" : log.type === "success" ? "text-green-400" : "text-orange-400"}`}>
                               {log.action}
                             </span>
                           </div>
@@ -969,7 +1036,7 @@ export default function ZestlyAdminPage() {
       {editingUser && createPortal(
           <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
               <div className="bg-[#121216] w-full max-w-md rounded-[2rem] p-6 sm:p-8 shadow-2xl border border-white/10 relative">
-                  <button onClick={() => setEditingUser(null)} className="absolute top-6 right-6 text-slate-500 hover:text-white">✕</button>
+                  <button onClick={() => setEditingUser(null)} className="absolute top-6 right-6 text-slate-500 hover:text-white cursor-pointer">✕</button>
                   <h3 className="text-2xl font-black text-white mb-6">Edit User ⚡</h3>
                   
                   <form onSubmit={handleEditUserSubmit} className="space-y-4">
@@ -986,7 +1053,7 @@ export default function ZestlyAdminPage() {
                           <textarea value={editFormData.bio} onChange={e => setEditFormData({...editFormData, bio: e.target.value})} className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none text-white mt-1 resize-none" rows={3} />
                       </div>
                       
-                      <button type="submit" className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black py-4 rounded-xl mt-4 hover:scale-[1.02] active:scale-95 transition-all shadow-lg">
+                      <button type="submit" className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black py-4 rounded-xl mt-4 hover:scale-[1.02] active:scale-95 transition-all shadow-lg cursor-pointer">
                           Save Changes
                       </button>
                   </form>
@@ -1002,6 +1069,6 @@ export default function ZestlyAdminPage() {
           </div>
         </div>, document.body
       )}
-    </div>
+    </>
   );
 }
