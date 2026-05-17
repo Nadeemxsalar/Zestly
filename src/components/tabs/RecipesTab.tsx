@@ -31,6 +31,13 @@ export default function RecipesTab({ user }: RecipesTabProps) {
   const [isLoadingDB, setIsLoadingDB] = useState(true);
   const router = useRouter();
 
+  // 🚀 PAGINATION & INFINITE SCROLL STATES
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const observerTarget = useRef<HTMLDivElement>(null);
+  const POSTS_PER_PAGE = 6;
+
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<"All" | "Veg" | "Non-Veg" | "Quick Meal" | "High Protein">("All");
   const [sortBy, setSortBy] = useState<"Newest" | "Quickest" | "High Protein">("Newest");
@@ -42,13 +49,18 @@ export default function RecipesTab({ user }: RecipesTabProps) {
 
   const [mounted, setMounted] = useState(false);
   
-  // Toast State
+  // 🚀 PROFESSIONAL CUSTOM POPUPS & TOAST
+  const [alertModal, setAlertModal] = useState({ isOpen: false, message: "", type: "info" });
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean, message: string, onConfirm: (() => void) | null }>({ isOpen: false, message: "", onConfirm: null });
   const [toast, setToast] = useState({ isOpen: false, message: "" });
   
   const showToast = (message: string) => {
     setToast({ isOpen: true, message });
     setTimeout(() => setToast({ isOpen: false, message: "" }), 3000);
   };
+
+  const showAlert = (message: string, type: "info" | "error" = "info") => setAlertModal({ isOpen: true, message, type });
+  const showConfirm = (message: string, onConfirm: () => void) => setConfirmModal({ isOpen: true, message, onConfirm });
 
   // --- CONTROLLED FORM STATES ---
   const [newName, setNewName] = useState("");
@@ -77,39 +89,92 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     fetchRecipes();
   }, []);
 
+  // Format Helper
+  const formatRecipe = (dbRecipe: any): Recipe => ({
+    id: dbRecipe.id,
+    name: dbRecipe.name,
+    time: dbRecipe.time || "30 Min",
+    calories: dbRecipe.calories || 400,
+    type: dbRecipe.type as any || "Veg",
+    category: dbRecipe.category || "Quick Meal",
+    emoji: dbRecipe.emoji || (dbRecipe.type === "Veg" ? "🥗" : "🥩"),
+    gradient: dbRecipe.gradient || (dbRecipe.type === "Veg" ? "from-green-500 to-emerald-600" : "from-orange-500 to-red-600"),
+    isLiked: dbRecipe.is_liked || false,
+    ingredients: dbRecipe.ingredients || [],
+    steps: dbRecipe.steps || [],
+    imageUrl: dbRecipe.image_url || undefined,
+    macros: dbRecipe.macros || { protein: 10, carbs: 20, fats: 10 },
+    difficulty: dbRecipe.difficulty as any || "Medium",
+    authorId: dbRecipe.author_id || dbRecipe.user_id 
+  });
+
+  // 🚀 INITIAL FETCH (PAGE 0)
   const fetchRecipes = async () => {
+    setIsLoadingDB(true);
     const { data, error } = await supabase
       .from("recipes")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .range(0, POSTS_PER_PAGE - 1);
 
     if (!error && data) {
-      const formattedRecipes: Recipe[] = data.map(dbRecipe => ({
-        id: dbRecipe.id,
-        name: dbRecipe.name,
-        time: dbRecipe.time || "30 Min",
-        calories: dbRecipe.calories || 400,
-        type: dbRecipe.type as any || "Veg",
-        category: dbRecipe.category || "Quick Meal",
-        emoji: dbRecipe.emoji || (dbRecipe.type === "Veg" ? "🥗" : "🥩"),
-        gradient: dbRecipe.gradient || (dbRecipe.type === "Veg" ? "from-green-500 to-emerald-600" : "from-orange-500 to-red-600"),
-        isLiked: dbRecipe.is_liked || false,
-        ingredients: dbRecipe.ingredients || [],
-        steps: dbRecipe.steps || [],
-        imageUrl: dbRecipe.image_url || undefined,
-        macros: dbRecipe.macros || { protein: 10, carbs: 20, fats: 10 },
-        difficulty: dbRecipe.difficulty as any || "Medium",
-        authorId: dbRecipe.author_id || dbRecipe.user_id 
-      }));
-      setRecipes(formattedRecipes);
+      setRecipes(data.map(formatRecipe));
+      setPage(1);
+      setHasMore(data.length === POSTS_PER_PAGE);
     }
     setIsLoadingDB(false);
   };
 
+  // 🚀 LOAD MORE POSTS (INFINITE SCROLL)
+  const loadMoreRecipes = async () => {
+    if (isFetchingMore || !hasMore || isLoadingDB) return;
+    setIsFetchingMore(true);
+
+    const from = page * POSTS_PER_PAGE;
+    const to = from + POSTS_PER_PAGE - 1;
+
+    const { data, error } = await supabase
+      .from("recipes")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (!error && data && data.length > 0) {
+      const formatted = data.map(formatRecipe);
+      setRecipes(prev => {
+        const existingIds = new Set(prev.map(p => p.id));
+        const newUniquePosts = formatted.filter(p => !existingIds.has(p.id));
+        return [...prev, ...newUniquePosts];
+      });
+
+      setPage(p => p + 1);
+      if (data.length < POSTS_PER_PAGE) setHasMore(false);
+    } else {
+      setHasMore(false);
+    }
+    setIsFetchingMore(false);
+  };
+
+  // 🚀 INTERSECTION OBSERVER EFFECT
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isFetchingMore && !isLoadingDB && filter === "All" && !searchQuery) {
+          loadMoreRecipes();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (observerTarget.current) observer.observe(observerTarget.current);
+    
+    return () => observer.disconnect();
+  }, [hasMore, isFetchingMore, isLoadingDB, filter, searchQuery, page]);
+
   const checkAuth = () => {
     if (!user) {
-      showToast("Chef, you need to log in to use this feature! 🔒👨‍🍳");
-      setTimeout(() => router.push("/login"), 1500);
+      showAlert("Chef, you need to log in to use this feature! 🔒👨‍🍳", "info");
+      setTimeout(() => router.push("/login"), 1800);
       return false;
     }
     return true;
@@ -132,13 +197,14 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     showToast(`Link for ${postName} copied! 🚀`);
   };
 
-  const handleDelete = async (id: string) => {
+  // 🚀 PREMIUM DELETE WITH CUSTOM CONFIRMATION
+  const handleDelete = (id: string) => {
     if (!checkAuth()) return;
-    if (confirm("Are you sure you want to delete this recipe?")) {
-      setRecipes(recipes.filter(r => r.id !== id)); 
-      await supabase.from("recipes").delete().eq("id", id); 
-      showToast("Recipe deleted successfully! 🗑️");
-    }
+    showConfirm("Are you sure you want to permanently delete this recipe? 🗑️", async () => {
+        setRecipes(prev => prev.filter(r => r.id !== id)); 
+        await supabase.from("recipes").delete().eq("id", id); 
+        showToast("Recipe deleted successfully! 🗑️");
+    });
   };
 
   const processImageFile = (file: File) => {
@@ -253,12 +319,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     
     if (!error && data) {
       const dbRecipe = data[0];
-      const addedRecipe: Recipe = {
-        id: dbRecipe.id, name: dbRecipe.name, time: dbRecipe.time, calories: dbRecipe.calories, type: dbRecipe.type,
-        category: dbRecipe.category, emoji: dbRecipe.emoji, gradient: dbRecipe.gradient, isLiked: dbRecipe.is_liked,
-        ingredients: dbRecipe.ingredients, steps: dbRecipe.steps, imageUrl: dbRecipe.image_url, macros: dbRecipe.macros, difficulty: dbRecipe.difficulty,
-        authorId: dbRecipe.author_id
-      };
+      const addedRecipe: Recipe = formatRecipe(dbRecipe);
       setRecipes([addedRecipe, ...recipes]);
       showToast("Recipe added successfully! 🎉");
     } else {
@@ -321,7 +382,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
           </div>
           
           <div className="relative shrink-0">
-            <select value={sortBy || "Newest"} onChange={(e) => setSortBy(e.target.value as any)} className="bg-white dark:bg-[#0c0c10] border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white text-xs sm:text-sm font-extrabold rounded-full pl-5 pr-10 py-4 h-full outline-none cursor-pointer focus:border-orange-500/50 shadow-[0_8px_30px_#0000000d] dark:shadow-2xl appearance-none outline-none [-webkit-tap-highlight-color:transparent]">
+            <select value={sortBy || "Newest"} onChange={(e) => setSortBy(e.target.value as any)} className="bg-white dark:bg-[#0c0c10] border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white text-xs sm:text-sm font-extrabold rounded-full pl-5 pr-10 py-4 h-full outline-none cursor-pointer focus:border-orange-500/50 shadow-[0_8px_30px_#0000000d] dark:shadow-2xl appearance-none [-webkit-tap-highlight-color:transparent]">
               <option value="Newest" className="bg-white dark:bg-black text-slate-900 dark:text-white">✨ Newest</option>
               <option value="Quickest" className="bg-white dark:bg-black text-slate-900 dark:text-white">⏱️ Quickest</option>
               <option value="High Protein" className="bg-white dark:bg-black text-slate-900 dark:text-white">💪 High Protein</option>
@@ -358,72 +419,82 @@ export default function RecipesTab({ user }: RecipesTabProps) {
               </p>
             </div>
           ) : (
-            filteredAndSortedRecipes.map((recipe) => (
-              <div key={recipe.id} className="flex flex-col w-full border-b-[8px] sm:border-b-0 border-slate-100 dark:border-[#121216] sm:bg-transparent">
-                
-                {/* Mobile: rounded-none and no-shadow | Laptop: Rounded Cards with Deep Glow */}
-                <div className="relative bg-white dark:bg-[#0b0b0e] border-y sm:border border-slate-200/80 dark:border-white/10 rounded-none sm:rounded-[2.5rem] overflow-hidden shadow-none sm:shadow-md dark:sm:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col">
+            <>
+              {filteredAndSortedRecipes.map((recipe) => (
+                <div key={recipe.id} className="flex flex-col w-full border-b-[8px] sm:border-b-0 border-slate-100 dark:border-[#121216] sm:bg-transparent">
                   
-                  {/* Image Container: Square on Mobile (1:1 aspect ratio), Fixed Height on Desktop */}
-                  <div className={`w-full aspect-square sm:aspect-auto sm:h-64 relative flex items-center justify-center cursor-pointer sm:overflow-hidden ${!recipe.imageUrl ? `bg-linear-to-br ${recipe.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
-                    {recipe.imageUrl ? (
-                      <>
-                        <div className="absolute inset-0 bg-cover bg-center blur-xl opacity-20 sm:group-hover/card:opacity-40 sm:group-hover/card:scale-110 transition-all duration-700" style={{ backgroundImage: `url(${recipe.imageUrl})` }}></div>
-                        <img src={recipe.imageUrl} alt={recipe.name} className="relative z-10 w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" />
-                      </>
-                    ) : (
-                      <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{recipe.emoji}</span>
-                    )}
+                  {/* Mobile: rounded-none and no-shadow | Laptop: Rounded Cards with Deep Glow */}
+                  <div className="relative bg-white dark:bg-[#0b0b0e] border-y sm:border border-slate-200/80 dark:border-white/10 rounded-none sm:rounded-[2.5rem] overflow-hidden shadow-none sm:shadow-md dark:sm:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col">
                     
-                    <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/80 via-black/30 to-transparent p-5 pt-20 z-20">
-                      <div className="flex justify-between items-start gap-2 mb-2">
-                        <h3 className="text-white font-extrabold text-2xl leading-tight tracking-tight drop-shadow-lg">{recipe.name}</h3>
-                        <span className={`shrink-0 text-[10px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-lg border backdrop-blur-md ${recipe.type === 'Veg' ? 'bg-green-500/20 text-green-300 border-green-400/30' : 'bg-red-500/20 text-red-300 border-red-400/30'}`}>{recipe.type}</span>
-                      </div>
-                    </div>
-
-                    <div className="absolute top-4 left-4 flex gap-2 z-20">
-                      <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-blue-400">P</span> {recipe.macros?.protein || 0}g</span>
-                      <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-yellow-400">C</span> {recipe.macros?.carbs || 0}g</span>
-                    </div>
-
-                    <div className="absolute top-4 right-4 flex flex-col gap-2.5 z-20">
-                      <button onClick={() => toggleLike(recipe.id)} className="group cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-black/80 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
-                        <svg className={`w-5 h-5 transition-transform ${recipe.isLiked ? 'fill-red-500 text-red-500 scale-110 drop-shadow-[0_0_8px_#ef444466]' : 'group-hover:text-red-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
-                      </button>
-                      <button onClick={() => handleShare(recipe.name)} className="cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-green-500 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
-                      </button>
-                      {user && user.id === recipe.authorId && (
-                        <button onClick={() => handleDelete(recipe.id)} className="cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-red-500 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                        </button>
+                    {/* Image Container: Square on Mobile (1:1 aspect ratio), Fixed Height on Desktop */}
+                    <div className={`w-full aspect-square sm:aspect-auto sm:h-64 relative flex items-center justify-center cursor-pointer sm:overflow-hidden outline-none [-webkit-tap-highlight-color:transparent] ${!recipe.imageUrl ? `bg-linear-to-br ${recipe.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
+                      {recipe.imageUrl ? (
+                        <>
+                          <div className="absolute inset-0 bg-cover bg-center blur-xl opacity-20 sm:group-hover/card:opacity-40 sm:group-hover/card:scale-110 transition-all duration-700" style={{ backgroundImage: `url(${recipe.imageUrl})` }}></div>
+                          <img src={recipe.imageUrl} alt={recipe.name} className="relative z-10 w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" />
+                        </>
+                      ) : (
+                        <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{recipe.emoji}</span>
                       )}
-                    </div>
-                  </div>
-
-                  {/* Details Overlay and CTA */}
-                  <div className="py-4 px-4 sm:p-5 flex-1 flex flex-col justify-between bg-transparent">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-4 text-xs font-bold text-slate-500 dark:text-slate-400">
-                        <span className="flex items-center gap-1.5"><span className="text-base">⏱️</span> {recipe.time}</span>
-                        <span className="flex items-center gap-1.5 text-orange-500 dark:text-orange-400"><span className="text-base">🔥</span> {recipe.calories} cal</span>
+                      
+                      <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/80 via-black/30 to-transparent p-5 pt-20 z-20 pointer-events-none">
+                        <div className="flex justify-between items-start gap-2 mb-2">
+                          <h3 className="text-white font-extrabold text-2xl leading-tight tracking-tight drop-shadow-lg">{recipe.name}</h3>
+                          <span className={`shrink-0 text-[10px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-lg border backdrop-blur-md ${recipe.type === 'Veg' ? 'bg-green-500/20 text-green-300 border-green-400/30' : 'bg-red-500/20 text-red-300 border-red-400/30'}`}>{recipe.type}</span>
+                        </div>
                       </div>
-                      <span className={`text-[10px] font-extrabold px-3 py-1.5 rounded-full border ${recipe.difficulty === 'Easy' ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-transparent' : recipe.difficulty === 'Medium' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-transparent' : 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-transparent'}`}>
-                        {recipe.difficulty}
-                      </span>
+
+                      <div className="absolute top-4 left-4 flex gap-2 z-20 pointer-events-none">
+                        <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-blue-400">P</span> {recipe.macros?.protein || 0}g</span>
+                        <span className="bg-black/60 backdrop-blur-md border border-white/10 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5"><span className="text-yellow-400">C</span> {recipe.macros?.carbs || 0}g</span>
+                      </div>
+
+                      <div className="absolute top-4 right-4 flex flex-col gap-2.5 z-20">
+                        <button onClick={(e) => { e.stopPropagation(); toggleLike(recipe.id); }} className="group cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-black/80 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
+                          <svg className={`w-5 h-5 transition-transform ${recipe.isLiked ? 'fill-red-500 text-red-500 scale-110 drop-shadow-[0_0_8px_#ef444466]' : 'group-hover:text-red-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleShare(recipe.name); }} className="cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-green-500 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+                        </button>
+                        {user && user.id === recipe.authorId && (
+                          <button onClick={(e) => { e.stopPropagation(); handleDelete(recipe.id); }} className="cursor-pointer bg-black/50 backdrop-blur-md p-2.5 rounded-full text-white hover:bg-red-500 transition-colors active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    
-                    <button onClick={() => openCookMode(recipe)} className="cursor-pointer w-full mt-4 bg-slate-900 dark:bg-white/5 hover:bg-slate-800 dark:hover:bg-orange-500 text-white font-extrabold py-3.5 rounded-xl transition-all duration-300 flex justify-center items-center gap-2.5 group/btn shadow-[0_4px_15px_#00000033] dark:shadow-none active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
-                      <span>Start Cooking</span>
-                      <svg className="w-5 h-5 opacity-50 group-hover/btn:opacity-100 group-hover/btn:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
-                      </svg>
-                    </button>
+
+                    {/* Details Overlay and CTA */}
+                    <div className="py-4 px-4 sm:p-5 flex-1 flex flex-col justify-between bg-transparent">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-4 text-xs font-bold text-slate-500 dark:text-slate-400">
+                          <span className="flex items-center gap-1.5"><span className="text-base">⏱️</span> {recipe.time}</span>
+                          <span className="flex items-center gap-1.5 text-orange-500 dark:text-orange-400"><span className="text-base">🔥</span> {recipe.calories} cal</span>
+                        </div>
+                        <span className={`text-[10px] font-extrabold px-3 py-1.5 rounded-full border ${recipe.difficulty === 'Easy' ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-transparent' : recipe.difficulty === 'Medium' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-transparent' : 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-transparent'}`}>
+                          {recipe.difficulty}
+                        </span>
+                      </div>
+                      
+                      <button onClick={() => openCookMode(recipe)} className="cursor-pointer w-full mt-4 bg-slate-900 dark:bg-white/5 hover:bg-slate-800 dark:hover:bg-orange-500 text-white font-extrabold py-3.5 rounded-xl transition-all duration-300 flex justify-center items-center gap-2.5 group/btn shadow-[0_4px_15px_#00000033] dark:shadow-none active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
+                        <span>Start Cooking</span>
+                        <svg className="w-5 h-5 opacity-50 group-hover/btn:opacity-100 group-hover/btn:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              ))}
+              
+              {/* 🚀 INFINITE SCROLL LOADER / TARGET */}
+              {filter === "All" && !searchQuery && (
+                <div ref={observerTarget} className="w-full flex flex-col items-center justify-center py-8 col-span-full">
+                  {isFetchingMore && <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>}
+                  {!hasMore && recipes.length > 0 && <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-4">You're all caught up! 🏁</p>}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -673,6 +744,35 @@ export default function RecipesTab({ user }: RecipesTabProps) {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* 🚀 NEW: CUSTOM ALERT MODAL (Replaces window.alert) */}
+      {mounted && alertModal.isOpen && createPortal(
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200" onClick={() => setAlertModal({ ...alertModal, isOpen: false })}>
+            <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-sm rounded-[2rem] p-6 shadow-2xl border border-slate-200 dark:border-white/10 text-center" onClick={e => e.stopPropagation()}>
+                <div className="w-16 h-16 mx-auto bg-orange-100 dark:bg-orange-500/20 text-orange-500 rounded-full flex items-center justify-center text-3xl mb-4">
+                    {alertModal.type === 'error' ? '⚠️' : '🔒'}
+                </div>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">Wait a sec!</h3>
+                <p className="text-sm text-slate-500 mb-6">{alertModal.message}</p>
+                <button onClick={() => setAlertModal({ ...alertModal, isOpen: false })} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3.5 rounded-xl transition-all outline-none shadow-[0_4px_15px_rgba(249,115,22,0.3)] active:scale-95 cursor-pointer">Okay, got it</button>
+            </div>
+        </div>, document.body
+      )}
+
+      {/* 🚀 NEW: CUSTOM CONFIRM MODAL (Replaces window.confirm) */}
+      {mounted && confirmModal.isOpen && createPortal(
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200" onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}>
+            <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-sm rounded-[2rem] p-6 shadow-2xl border border-slate-200 dark:border-white/10 text-center" onClick={e => e.stopPropagation()}>
+                <div className="w-16 h-16 mx-auto bg-red-100 dark:bg-red-500/20 text-red-500 rounded-full flex items-center justify-center text-2xl mb-4">🗑️</div>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">Are you sure?</h3>
+                <p className="text-sm text-slate-500 mb-6">{confirmModal.message}</p>
+                <div className="flex gap-3">
+                    <button onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })} className="flex-1 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-white font-bold py-3.5 rounded-xl transition-all outline-none cursor-pointer">Cancel</button>
+                    <button onClick={() => { if(confirmModal.onConfirm) confirmModal.onConfirm(); setConfirmModal({ ...confirmModal, isOpen: false }); }} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3.5 rounded-xl transition-all outline-none shadow-[0_4px_15px_#ef44444d] cursor-pointer active:scale-95">Yes, Delete</button>
+                </div>
+            </div>
+        </div>, document.body
       )}
 
       {/* Toast Alert Portal */}
