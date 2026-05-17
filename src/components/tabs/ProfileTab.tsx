@@ -19,6 +19,11 @@ export default function ProfileTab({ user }: { user: any }) {
   const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0 });
   const [isLoading, setIsLoading] = useState(true);
 
+  // 🚀 ZESTLY ENGINE & ANALYTICS STATES
+  const [fakeMode, setFakeMode] = useState(false);
+  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
+  const [analytics, setAnalytics] = useState({ totalViews: 0, totalLikes: 0, reach: 0 });
+
   // --- UI STATES ---
   const [activeTab, setActiveTab] = useState<"posts" | "saved">("posts");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -64,6 +69,8 @@ export default function ProfileTab({ user }: { user: any }) {
     setTimeout(() => setToast({ isOpen: false, message: "" }), 3000);
   };
 
+  const formatNum = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+
   useEffect(() => {
     setMounted(true);
     if (user) {
@@ -77,7 +84,14 @@ export default function ProfileTab({ user }: { user: any }) {
 
   const fetchProfileData = async () => {
     setIsLoading(true);
+
+    // Fetch Zestly Engine Settings
+    const { data: settingsData } = await supabase.from("app_settings").select("fake_engagement_enabled").eq("id", 1).single();
+    const isFakeOn = settingsData ? settingsData.fake_engagement_enabled : false;
+    setFakeMode(isFakeOn);
+
     const { data: profileData } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+    
     if (profileData) {
       setProfile(profileData);
       setEditName(profileData.full_name || "");
@@ -88,22 +102,71 @@ export default function ProfileTab({ user }: { user: any }) {
       setSavedRecipeIds(savedIds);
       if (savedIds.length > 0) {
         const { data: sRecipes } = await supabase.from("recipes").select("*").in("id", savedIds);
-        if (sRecipes) setSavedPosts(sRecipes);
+        if (sRecipes) {
+            const formattedSaved = sRecipes.map((r, index) => {
+                let displayLikes = r.likes_count || 0;
+                let displayViews = r.views_count || 0; 
+                if (isFakeOn) {
+                    const ageInHours = (Date.now() - new Date(r.created_at || Date.now()).getTime()) / (1000 * 60 * 60);
+                    const fakeLikesBoost = Math.floor(ageInHours * 5) + 35 + (index * 2); 
+                    displayLikes += fakeLikesBoost;
+                    displayViews += fakeLikesBoost * (Math.floor(Math.random() * 4) + 6);
+                }
+                return { ...r, likes_count: displayLikes, viewsCount: displayViews };
+            });
+            setSavedPosts(formattedSaved);
+        }
       } else {
         setSavedPosts([]);
       }
     }
 
     const { data: recipes } = await supabase.from("recipes").select("*").eq("author_id", user.id).order("created_at", { ascending: false });
+    
+    let formattedMyPosts: any[] = [];
+    let tViews = 0;
+    let tLikes = 0;
+
     if (recipes) {
-      setMyPosts(recipes);
-      setStats((prev: any) => ({ ...prev, posts: recipes.length }));
+      formattedMyPosts = recipes.map((r, index) => {
+          let displayLikes = r.likes_count || 0;
+          let displayViews = r.views_count || 0;
+
+          if (isFakeOn) {
+              const ageInHours = (Date.now() - new Date(r.created_at || Date.now()).getTime()) / (1000 * 60 * 60);
+              const fakeLikesBoost = Math.floor(ageInHours * 5) + 35 + (index * 2); 
+              displayLikes += fakeLikesBoost;
+              displayViews += fakeLikesBoost * (Math.floor(Math.random() * 4) + 6);
+          }
+          
+          tViews += displayViews;
+          tLikes += displayLikes;
+
+          return { ...r, likes_count: displayLikes, viewsCount: displayViews };
+      });
+      setMyPosts(formattedMyPosts);
     }
 
     const { count: followersCount } = await supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", user.id);
     const { count: followingCount } = await supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", user.id);
     
-    setStats((prev: any) => ({ ...prev, followers: followersCount || 0, following: followingCount || 0 }));
+    const realFollowers = followersCount || 0;
+    const bonusFollowers = profileData?.bonus_followers || 0;
+    const finalFollowers = isFakeOn ? realFollowers + bonusFollowers : realFollowers;
+
+    setStats({ 
+        posts: recipes?.length || 0, 
+        followers: finalFollowers, 
+        following: followingCount || 0 
+    });
+
+    // 🚀 CALCULATE ANALYTICS 
+    setAnalytics({
+        totalViews: tViews,
+        totalLikes: tLikes,
+        reach: Math.floor(tViews * 1.4 + finalFollowers * 0.5) // A smart realistic metric
+    });
+    
     setIsLoading(false);
   };
 
@@ -269,7 +332,11 @@ export default function ProfileTab({ user }: { user: any }) {
       <div className="flex justify-between items-center px-6 py-4 sticky top-0 bg-slate-50/80 dark:bg-[#07070a]/80 backdrop-blur-xl z-40">
         <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap">
           {profile?.username || "chef_zestly"} 
-          <span className="w-1.5 h-1.5 shrink-0 rounded-full bg-green-500 animate-pulse"></span>
+          {fakeMode ? (
+              <span className="w-1.5 h-1.5 shrink-0 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_#4ade80]" title="Zestly Growth Engine Active"></span>
+          ) : (
+              <span className="w-1.5 h-1.5 shrink-0 rounded-full bg-slate-400" title="Organic Mode"></span>
+          )}
         </h2>
         <button onClick={() => setIsMenuOpen(true)} className="p-2 -mr-2 shrink-0 cursor-pointer text-slate-900 dark:text-white outline-none active:scale-90 transition-transform [-webkit-tap-highlight-color:transparent] group flex flex-col gap-1.5 items-end">
           <div className="w-7 h-[3px] bg-current rounded-full transition-all"></div>
@@ -283,10 +350,9 @@ export default function ProfileTab({ user }: { user: any }) {
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-8 relative sm:p-4">
           
           <div className="relative shrink-0 group flex items-center justify-center">
-            {/* 🚀 FIXED: Glow reduced so it doesn't overlap the navbar or get cut off */}
-            <div className={`absolute -inset-4 sm:-inset-6 bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} rounded-full blur-2xl opacity-25 group-hover:opacity-45 transition-all duration-700 pointer-events-none z-0`}></div>
+            <div className={`absolute w-[150%] h-[150%] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} rounded-full blur-[40px] sm:blur-[60px] opacity-30 group-hover:opacity-50 transition-all duration-700 pointer-events-none`}></div>
             
-            <div className={`relative z-10 w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} p-[4px] shadow-[0_0_20px_rgba(0,0,0,0.5)] transition-transform group-hover:scale-[1.03]`}>
+            <div className={`relative z-10 w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} p-[4px] shadow-2xl transition-transform group-hover:scale-[1.03]`}>
               <div className="w-full h-full bg-white dark:bg-[#121216] rounded-full flex items-center justify-center text-4xl sm:text-5xl font-black text-slate-900 dark:text-white border-4 border-white dark:border-[#07070a] uppercase transition-colors overflow-hidden relative">
                 {profile?.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" alt="Profile" /> : initial}
                 {(isSaving || isProcessingImage) && <div className="absolute inset-0 bg-black/60 flex items-center justify-center"><svg className="animate-spin h-6 w-6 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>}
@@ -305,16 +371,29 @@ export default function ProfileTab({ user }: { user: any }) {
         </div>
 
         <div className="flex justify-between items-center bg-white/60 dark:bg-white/[0.03] backdrop-blur-md border border-slate-200/50 dark:border-white/10 rounded-[1.5rem] py-5 px-6 mt-8 shadow-sm dark:shadow-none">
-          <div className="flex flex-col items-center flex-1"><span className="text-2xl font-black text-slate-900 dark:text-white">{stats.posts}</span><span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest mt-0.5">Posts</span></div>
+          <div className="flex flex-col items-center flex-1"><span className="text-2xl font-black text-slate-900 dark:text-white">{formatNum(stats.posts)}</span><span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest mt-0.5">Posts</span></div>
           <div className="w-px h-10 bg-slate-200 dark:bg-white/10"></div>
-          <div className="flex flex-col items-center flex-1"><span className="text-2xl font-black text-slate-900 dark:text-white">{stats.followers}</span><span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest mt-0.5">Followers</span></div>
+          <div className="flex flex-col items-center flex-1">
+              <span className="text-2xl font-black text-slate-900 dark:text-white">{formatNum(stats.followers)}</span>
+              <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest mt-0.5">Followers</span>
+          </div>
           <div className="w-px h-10 bg-slate-200 dark:bg-white/10"></div>
-          <div className="flex flex-col items-center flex-1"><span className="text-2xl font-black text-slate-900 dark:text-white">{stats.following}</span><span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest mt-0.5">Following</span></div>
+          <div className="flex flex-col items-center flex-1"><span className="text-2xl font-black text-slate-900 dark:text-white">{formatNum(stats.following)}</span><span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest mt-0.5">Following</span></div>
         </div>
 
-        <div className="flex gap-4 mt-6">
-          <button onClick={() => setIsEditOpen(true)} className={`flex-1 bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white font-extrabold py-3.5 rounded-2xl text-sm sm:text-base transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shadow-md hover:shadow-lg`}>Edit Profile</button>
-          <button onClick={() => showToast("Profile Link Copied! 🔗")} className="flex-1 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/10 text-slate-900 dark:text-white font-extrabold py-3.5 rounded-2xl text-sm sm:text-base transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shadow-sm dark:shadow-none">Share Profile</button>
+        {/* 🚀 ACTION BUTTONS WITH ANALYTICS */}
+        <div className="flex flex-col gap-3 mt-6">
+          <div className="flex gap-4">
+              <button onClick={() => setIsEditOpen(true)} className={`flex-1 bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white font-extrabold py-3.5 rounded-2xl text-sm sm:text-base transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shadow-md hover:shadow-lg`}>Edit Profile</button>
+              <button onClick={() => showToast("Profile Link Copied! 🔗")} className="flex-1 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/10 text-slate-900 dark:text-white font-extrabold py-3.5 rounded-2xl text-sm sm:text-base transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shadow-sm dark:shadow-none">Share Profile</button>
+          </div>
+          <button 
+            onClick={() => setIsAnalyticsOpen(true)} 
+            className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-extrabold py-3.5 rounded-2xl text-sm transition-all active:scale-95 outline-none hover:bg-slate-200 dark:hover:bg-white/10 flex items-center justify-center gap-2 shadow-sm"
+          >
+            <svg className="w-5 h-5 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M5 19h14v2H5v-2zm2-4h2v4H7v-4zm4-7h2v11h-2V8zm4-5h2v16h-2V3z"/></svg>
+            Professional Dashboard
+          </button>
         </div>
       </div>
 
@@ -332,7 +411,7 @@ export default function ProfileTab({ user }: { user: any }) {
 
       {/* --- ATTRACTIVE POSTS GRID --- */}
       {activeTab === "posts" && (
-        <div className="px-5 sm:px-6">
+        <div className="px-5 sm:px-6 max-w-4xl mx-auto w-full">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-5">
             {myPosts.length === 0 ? (
               <div className="col-span-full text-center py-24 bg-white dark:bg-white/[0.02] border border-dashed border-slate-200 dark:border-white/10 rounded-[2rem] mt-2">
@@ -350,8 +429,14 @@ export default function ProfileTab({ user }: { user: any }) {
                       <span className="text-4xl sm:text-6xl drop-shadow-lg">{post.emoji || '🍲'}</span>
                     </div>
                   )}
-                  <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 flex items-center justify-center gap-4 text-white font-black transition-all duration-300">
-                    <span className="flex items-center gap-1.5 text-lg"><svg className="w-6 h-6 fill-white" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> {post.likes_count || 0}</span>
+                  {/* Views Badge */}
+                  <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-md text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none shadow-sm">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                    {formatNum(post.viewsCount)}
+                  </div>
+                  {/* Bottom Likes */}
+                  <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 flex items-center justify-center gap-4 text-white font-black transition-all duration-300 pointer-events-none">
+                    <span className="flex items-center gap-1.5 text-lg"><svg className="w-6 h-6 fill-white" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> {formatNum(post.likes_count)}</span>
                   </div>
                 </div>
               ))
@@ -362,7 +447,7 @@ export default function ProfileTab({ user }: { user: any }) {
 
       {/* 🚀 UPGRADED: SAVED VAULT SECTION */}
       {activeTab === "saved" && (
-        <div className="px-5 sm:px-6">
+        <div className="px-5 sm:px-6 max-w-4xl mx-auto w-full">
           {savedPosts.length === 0 ? (
             <div className="text-center py-24 bg-white dark:bg-white/[0.02] border border-dashed border-slate-200 dark:border-white/10 rounded-[2rem] mt-2">
               <span className="text-4xl block mb-4 opacity-50">🔒</span>
@@ -381,6 +466,12 @@ export default function ProfileTab({ user }: { user: any }) {
                     </div>
                   )}
                   
+                  {/* Views Badge */}
+                  <div className="absolute top-2 left-2 bg-black/50 backdrop-blur-md text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none shadow-sm">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                    {formatNum(post.viewsCount)}
+                  </div>
+
                   <button 
                     onClick={(e) => handleUnsaveClick(e, post.id)} 
                     className="absolute top-3 right-3 p-2.5 bg-black/50 hover:bg-red-500/80 backdrop-blur-md rounded-full text-white transition-all z-20 outline-none shadow-md cursor-pointer active:scale-90"
@@ -392,7 +483,7 @@ export default function ProfileTab({ user }: { user: any }) {
                   <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-2 text-white font-black transition-all duration-300 pointer-events-none">
                     <span className="flex items-center gap-1.5 text-lg">
                       <svg className="w-6 h-6 fill-white" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> 
-                      {post.likes_count || 0}
+                      {formatNum(post.likes_count)}
                     </span>
                   </div>
                 </div>
@@ -400,6 +491,51 @@ export default function ProfileTab({ user }: { user: any }) {
             </div>
           )}
         </div>
+      )}
+
+      {/* 🚀 MODAL: PROFESSIONAL DASHBOARD (ANALYTICS) */}
+      {mounted && isAnalyticsOpen && createPortal(
+        <div className="fixed inset-0 z-[100000] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm sm:p-4 animate-in fade-in duration-300" onClick={() => setIsAnalyticsOpen(false)}>
+          <div className="bg-white dark:bg-[#121216] w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-[2.5rem] p-6 shadow-2xl border border-slate-200 dark:border-white/10 animate-in slide-in-from-bottom-full sm:zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    Professional Dashboard {fakeMode && <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_#4ade80]"></span>}
+                </h3>
+                <button onClick={() => setIsAnalyticsOpen(false)} className="w-8 h-8 flex items-center justify-center bg-slate-100 dark:bg-white/10 rounded-full text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors">✕</button>
+            </div>
+            
+            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-6 leading-relaxed">
+                Insights from the last 30 days. Explore how your culinary magic is reaching the world!
+            </p>
+
+            <div className="space-y-3 mb-6">
+                <div className="bg-slate-50 dark:bg-[#1c1c1e] border border-slate-100 dark:border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                    <div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Accounts Reached</p>
+                        <p className="text-2xl font-black text-slate-900 dark:text-white">{formatNum(analytics.reach)}</p>
+                    </div>
+                    <div className="w-12 h-12 bg-indigo-500/10 text-indigo-500 rounded-full flex items-center justify-center text-xl">🚀</div>
+                </div>
+                
+                <div className="flex gap-3">
+                    <div className="flex-1 bg-slate-50 dark:bg-[#1c1c1e] border border-slate-100 dark:border-white/5 rounded-2xl p-4">
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Content Likes</p>
+                        <p className="text-xl font-black text-slate-900 dark:text-white">{formatNum(analytics.totalLikes)}</p>
+                        <p className="text-[10px] text-green-500 font-bold mt-1">+14% vs last week</p>
+                    </div>
+                    <div className="flex-1 bg-slate-50 dark:bg-[#1c1c1e] border border-slate-100 dark:border-white/5 rounded-2xl p-4">
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Profile Views</p>
+                        <p className="text-xl font-black text-slate-900 dark:text-white">{formatNum(analytics.totalViews)}</p>
+                        <p className="text-[10px] text-green-500 font-bold mt-1">+28% vs last week</p>
+                    </div>
+                </div>
+            </div>
+
+            <button onClick={() => setIsAnalyticsOpen(false)} className="w-full bg-slate-900 dark:bg-white text-white dark:text-black font-black py-4 rounded-xl shadow-lg active:scale-95 transition-transform">
+                Got it, Chef!
+            </button>
+          </div>
+        </div>, document.body
       )}
 
       {/* ========================================= */}
@@ -503,9 +639,9 @@ export default function ProfileTab({ user }: { user: any }) {
             </div>
 
             <div className="bg-white dark:bg-[#121216] rounded-[2rem] p-6 shadow-[0_8px_30px_#0000000a] dark:shadow-none border border-slate-100 dark:border-white/5 relative overflow-hidden group">
-              <div className={`absolute top-0 right-0 w-32 h-32 bg-linear-to-br ${activeTheme.from} ${activeTheme.to} opacity-10 rounded-bl-[100px] pointer-events-none transition-all group-hover:scale-110`}></div>
+              <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${activeTheme.from} ${activeTheme.to} opacity-10 rounded-bl-[100px] pointer-events-none transition-all group-hover:scale-110`}></div>
               <div className="flex gap-3 items-center mb-5 relative z-10">
-                <div className={`w-10 h-10 shrink-0 rounded-[1rem] bg-linear-to-tr ${activeTheme.from} ${activeTheme.to} flex items-center justify-center text-xl shadow-lg`}>🤖</div>
+                <div className={`w-10 h-10 shrink-0 rounded-[1rem] bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} flex items-center justify-center text-xl shadow-lg`}>🤖</div>
                 <h4 className="font-black text-slate-900 dark:text-white text-lg">AI Chef Assistant</h4>
               </div>
               <div className="bg-slate-50 dark:bg-black/40 border border-slate-100 dark:border-white/5 p-4 rounded-2xl mb-4 text-sm font-medium text-slate-700 dark:text-slate-300 shadow-inner relative z-10">
@@ -513,7 +649,7 @@ export default function ProfileTab({ user }: { user: any }) {
               </div>
               <div className="flex gap-2.5 relative z-10">
                 <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendChat()} placeholder="e.g., Substitute for eggs?" className="flex-1 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 px-4 py-3.5 rounded-2xl text-sm outline-none text-slate-900 dark:text-white focus:border-orange-500 transition-colors disabled:opacity-60" disabled={isTyping} />
-                <button onClick={handleSendChat} disabled={isTyping || !chatInput.trim()} className={`bg-linear-to-tr ${activeTheme.from} ${activeTheme.to} text-white px-5 rounded-2xl font-black transition-transform active:scale-95 disabled:opacity-50 shadow-md flex items-center justify-center outline-none [-webkit-tap-highlight-color:transparent]`}>
+                <button onClick={handleSendChat} disabled={isTyping || !chatInput.trim()} className={`bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white px-5 rounded-2xl font-black transition-transform active:scale-95 disabled:opacity-50 shadow-md flex items-center justify-center outline-none [-webkit-tap-highlight-color:transparent]`}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" /></svg>
                 </button>
               </div>
@@ -535,11 +671,8 @@ export default function ProfileTab({ user }: { user: any }) {
           <div className="flex-1 overflow-y-auto p-6 sm:p-10 [&::-webkit-scrollbar]:hidden">
             <form className="w-full max-w-lg mx-auto flex flex-col items-center pb-10" onSubmit={submitProfileSettings}>
                
-               {/* 🚀 AVATAR UPLOAD SECTION */}
                <div className="relative group cursor-pointer mb-8 shrink-0 flex items-center justify-center" onClick={() => fileInputRef.current?.click()}>
-                 {/* 🚀 FIXED: Modal DP Glow */}
-                 <div className={`absolute -inset-4 sm:-inset-6 bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} rounded-full blur-2xl opacity-25 group-hover:opacity-45 transition-all duration-700 pointer-events-none z-0`}></div>
-                 
+                 <div className={`absolute w-[140%] h-[140%] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} rounded-full blur-[35px] sm:blur-[50px] opacity-20 group-hover:opacity-35 transition-all duration-700 pointer-events-none`}></div>
                  <div className={`relative z-10 w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} p-[4px] shadow-2xl transition-transform group-hover:scale-[1.03]`}>
                    <div className="w-full h-full bg-white dark:bg-[#121216] rounded-full flex items-center justify-center text-5xl font-black text-slate-900 dark:text-white border-4 border-white dark:border-[#07070a] uppercase overflow-hidden relative">
                      {pendingAvatarPreview ? <img src={pendingAvatarPreview} className="w-full h-full object-cover" /> : profile?.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" /> : initial}
@@ -571,7 +704,7 @@ export default function ProfileTab({ user }: { user: any }) {
                </div>
                
                <div className="w-full mt-10 sm:mt-12 sticky bottom-0 z-20 py-4 bg-slate-50/80 dark:bg-[#07070a]/80 backdrop-blur-sm sm:static sm:bg-transparent sm:backdrop-blur-none sm:p-0">
-                    <button onClick={() => submitProfileSettings()} type="button" disabled={isSaving || isProcessingImage} className={`w-full bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white font-black py-5 rounded-2xl text-lg transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shadow-lg disabled:opacity-60 flex items-center justify-center gap-3`}>
+                    <button onClick={() => submitProfileSettings()} type="button" disabled={isSaving || isProcessingImage} className={`w-full bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white font-black py-5 rounded-2xl text-lg transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shadow-lg ${activeTheme.glow} disabled:opacity-60 flex items-center justify-center gap-3`}>
                         {isSaving ? <><svg className="animate-spin h-6 w-6 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Saving Culinary Magic...</> : isProcessingImage ? "Processing Image..." : "Save Profile Changes"}
                     </button>
                </div>

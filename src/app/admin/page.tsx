@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 
 // ─── Types ────────────────────────────────────────────────
 interface MetricCard {
@@ -20,7 +21,9 @@ interface UserRow {
   email: string;
   bio: string;
   recipes_count: number;
-  followers_count: number;
+  followers_count: number; // Real + Bonus (if fake mode ON)
+  real_followers: number;  // Only real
+  bonus_followers: number; // Fake added by admin
   following_count: number;
   joined: string;
   is_banned: boolean;
@@ -95,7 +98,7 @@ export default function ZestlyAdminPage() {
   const [topRecipes, setTopRecipes] = useState<RecipeRow[]>([]);
 
   // UI
-  const [activeSection, setActiveSection] = useState<"overview" | "users" | "recipes" | "logs">("overview");
+  const [activeSection, setActiveSection] = useState<"overview" | "users" | "recipes" | "logs" | "algorithm">("overview");
   const [userSearch, setUserSearch] = useState("");
   const [recipeSearch, setRecipeSearch] = useState("");
   const [maintenanceMode, setMaintenanceMode] = useState(false);
@@ -103,6 +106,17 @@ export default function ZestlyAdminPage() {
   const [aiBot, setAiBot] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [bannedIds, setBannedIds] = useState<Set<string>>(new Set());
+
+  // 🚀 NEW: God Mode / Algorithm States
+  const [fakeMode, setFakeMode] = useState(true);
+  const [editingUser, setEditingUser] = useState<UserRow | null>(null);
+  const [editFormData, setEditFormData] = useState({ full_name: "", username: "", bio: "" });
+
+  const [toast, setToast] = useState({ isOpen: false, message: "", type: "success" });
+  const showToast = (msg: string, type: "success" | "danger" = "success") => {
+    setToast({ isOpen: true, message: msg, type });
+    setTimeout(() => setToast({ isOpen: false, message: "", type: "success" }), 3000);
+  };
 
   // ── Fetch All Data ─────────────────────────────────────
   const fetchDashboardData = useCallback(async () => {
@@ -124,6 +138,7 @@ export default function ZestlyAdminPage() {
         { data: recipesData },
         { data: notifsData },
         { count: vegCount },
+        { data: settingsData }, // Fetch Global Algorithm settings
       ] = await Promise.all([
         supabase.from("profiles").select("*", { count: "exact", head: true }),
         supabase.from("recipes").select("*", { count: "exact", head: true }),
@@ -132,11 +147,16 @@ export default function ZestlyAdminPage() {
         supabase.from("pantry").select("*", { count: "exact", head: true }),
         supabase.from("profiles").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
         supabase.from("recipes").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
-        supabase.from("profiles").select("id, full_name, username, bio, created_at").order("created_at", { ascending: false }).limit(50),
+        supabase.from("profiles").select("id, full_name, username, bio, created_at, bonus_followers").order("created_at", { ascending: false }).limit(50),
         supabase.from("recipes").select("*").order("created_at", { ascending: false }).limit(50),
         supabase.from("notifications").select("id, type, created_at").order("created_at", { ascending: false }).limit(30),
         supabase.from("recipes").select("*", { count: "exact", head: true }).eq("type", "Veg"),
+        supabase.from("app_settings").select("fake_engagement_enabled").eq("id", 1).single(),
       ]);
+
+      if (settingsData) setFakeMode(settingsData.fake_engagement_enabled);
+
+      const isFakeOn = settingsData ? settingsData.fake_engagement_enabled : true;
 
       // Build user rows with recipe + follow counts
       const formattedUsers: UserRow[] = await Promise.all(
@@ -146,6 +166,10 @@ export default function ZestlyAdminPage() {
             supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", p.id),
             supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", p.id),
           ]);
+          
+          const realFollowers = fc || 0;
+          const bonusFollowers = p.bonus_followers || 0;
+
           return {
             id: p.id,
             full_name: p.full_name || "Unknown Chef",
@@ -153,7 +177,9 @@ export default function ZestlyAdminPage() {
             email: "",
             bio: p.bio || "",
             recipes_count: rc || 0,
-            followers_count: fc || 0,
+            real_followers: realFollowers,
+            bonus_followers: bonusFollowers,
+            followers_count: isFakeOn ? realFollowers + bonusFollowers : realFollowers,
             following_count: fgc || 0,
             joined: p.created_at,
             is_banned: false,
@@ -282,7 +308,69 @@ export default function ZestlyAdminPage() {
       { id: Date.now().toString(), action: "Admin deleted a recipe 🗑️", time: "just now", type: "danger", icon: "🗑️" },
       ...prev,
     ]);
+    showToast("Recipe deleted successfully!", "danger");
   };
+
+  // ── 🚀 ALGORITHM & GOD MODE CONTROLS ────────────────────────────────
+  const toggleFakeMode = async () => {
+      const newMode = !fakeMode;
+      setFakeMode(newMode);
+      await supabase.from("app_settings").update({ fake_engagement_enabled: newMode }).eq("id", 1);
+      
+      // Update local followers calculation instantly
+      setUsers(users.map(u => ({
+          ...u,
+          followers_count: newMode ? u.real_followers + u.bonus_followers : u.real_followers
+      })));
+      
+      showToast(newMode ? "🚀 Growth Algorithm Activated!" : "🛑 Engine Switched to Real Mode!");
+  };
+
+  const updateBonusFollowers = async (userId: string, delta: number) => {
+      const user = users.find(u => u.id === userId);
+      if (!user) return;
+      
+      const newBonus = Math.max(0, user.bonus_followers + delta); // Cant go below 0 bonus
+      
+      // Optimistic Update
+      setUsers(users.map(u => u.id === userId ? {
+          ...u, 
+          bonus_followers: newBonus,
+          followers_count: fakeMode ? u.real_followers + newBonus : u.real_followers
+      } : u));
+
+      await supabase.from("profiles").update({ bonus_followers: newBonus }).eq("id", userId);
+      showToast(`Bonus followers updated for ${user.username} ✨`);
+  };
+
+  const handleEditUserClick = (u: UserRow) => {
+      setEditingUser(u);
+      setEditFormData({ full_name: u.full_name, username: u.username, bio: u.bio });
+  };
+
+  const handleEditUserSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!editingUser) return;
+      
+      await supabase.from("profiles").update({ 
+          full_name: editFormData.full_name, 
+          username: editFormData.username, 
+          bio: editFormData.bio 
+      }).eq("id", editingUser.id);
+      
+      setUsers(users.map(u => u.id === editingUser.id ? { ...u, ...editFormData } : u));
+      setEditingUser(null);
+      showToast("User details successfully updated! ✏️");
+  };
+
+  const fullyDeleteUser = async (userId: string) => {
+      if(!confirm("⚠️ DANGER: Delete this user completely from the database? This cannot be undone!")) return;
+      
+      await supabase.from("profiles").delete().eq("id", userId);
+      setUsers(users.filter(u => u.id !== userId));
+      showToast("User permanently deleted from database 🗑️", "danger");
+  };
+
 
   // ── Filtered Lists ─────────────────────────────────────
   const filteredUsers = users.filter(
@@ -322,6 +410,7 @@ export default function ZestlyAdminPage() {
     { id: "overview", label: "Overview", icon: "📊" },
     { id: "users", label: "Users", icon: "👥" },
     { id: "recipes", label: "Recipes", icon: "🍲" },
+    { id: "algorithm", label: "Algorithm", icon: "🚀" }, // 🚀 NEW TAB
     { id: "logs", label: "Activity", icon: "📋" },
   ] as const;
 
@@ -365,7 +454,7 @@ export default function ZestlyAdminPage() {
             {navItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => setActiveSection(item.id)}
+                onClick={() => setActiveSection(item.id as any)}
                 className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl font-bold text-sm transition-all outline-none [-webkit-tap-highlight-color:transparent] ${
                   activeSection === item.id
                     ? "bg-orange-500/15 text-orange-400 border border-orange-500/25 shadow-[0_0_20px_rgba(249,115,22,0.1)]"
@@ -383,6 +472,9 @@ export default function ZestlyAdminPage() {
                   <span className="ml-auto bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full font-black">
                     {metrics.totalRecipes}
                   </span>
+                )}
+                {item.id === "algorithm" && fakeMode && (
+                  <span className="ml-auto w-2 h-2 bg-green-400 rounded-full shadow-[0_0_8px_#4ade80]" />
                 )}
                 {item.id === "logs" && logs.length > 0 && (
                   <span className="ml-auto w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -474,7 +566,7 @@ export default function ZestlyAdminPage() {
             {navItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => setActiveSection(item.id)}
+                onClick={() => setActiveSection(item.id as any)}
                 className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all outline-none [-webkit-tap-highlight-color:transparent] ${
                   activeSection === item.id
                     ? "bg-orange-500/15 text-orange-400 border border-orange-500/25"
@@ -714,7 +806,6 @@ export default function ZestlyAdminPage() {
                   </div>
                 </div>
 
-                {/* User cards - mobile: cards, desktop: table */}
                 {/* Desktop table */}
                 <div className="hidden md:block bg-white/[0.02] border border-white/5 rounded-[2rem] overflow-hidden">
                   <div className="overflow-x-auto">
@@ -975,6 +1066,99 @@ export default function ZestlyAdminPage() {
             )}
 
             {/* ════════════════════════════════════
+                🚀 NEW: ALGORITHM & GOD MODE 🚀
+            ════════════════════════════════════ */}
+            {activeSection === "algorithm" && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                
+                {/* 1. Global Fake Engagement Switch */}
+                <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-[2rem] p-6 relative overflow-hidden flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div className="absolute right-0 top-0 w-64 h-64 bg-purple-500/20 blur-[80px] pointer-events-none"></div>
+                    <div>
+                        <h2 className="text-2xl font-black text-white flex items-center gap-2">
+                            Growth Algorithm Engine 🚀
+                        </h2>
+                        <p className="text-indigo-200 text-sm mt-1 max-w-md">
+                            Turn this ON to artificially boost likes, views, and followers across the app. Makes the app look highly active to new users.
+                        </p>
+                    </div>
+                    <button
+                        onClick={toggleFakeMode}
+                        className={`relative w-20 h-10 rounded-full p-1.5 transition-all duration-300 outline-none shrink-0 border shadow-inner ${fakeMode ? "bg-green-500 border-green-400 shadow-[0_0_20px_#4ade8040]" : "bg-white/10 border-white/5"}`}
+                    >
+                        <div className={`w-7 h-7 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center text-[10px] ${fakeMode ? "translate-x-10 text-green-500" : "translate-x-0 text-slate-500"}`}>
+                            {fakeMode ? "ON" : "OFF"}
+                        </div>
+                    </button>
+                </div>
+
+                {/* 2. God Mode User Manipulation */}
+                <div className="bg-white/[0.02] border border-white/5 rounded-[2rem] p-5 sm:p-7">
+                    <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-end mb-6">
+                        <div>
+                            <h3 className="text-white font-black text-xl flex items-center gap-2">User God Mode ⚡</h3>
+                            <p className="text-slate-500 text-xs mt-1">Edit any profile or manually add/remove fake followers.</p>
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="Search user to hack..."
+                            value={userSearch}
+                            onChange={(e) => setUserSearch(e.target.value)}
+                            className="w-full sm:w-64 bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-indigo-500/50"
+                        />
+                    </div>
+
+                    <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden">
+                        {filteredUsers.length === 0 ? (
+                            <p className="text-center text-slate-500 py-10">No users found.</p>
+                        ) : (
+                            filteredUsers.map((u) => (
+                                <div key={u.id} className="bg-black/40 border border-white/5 p-4 rounded-2xl flex flex-col md:flex-row gap-4 items-center justify-between hover:border-indigo-500/30 transition-all">
+                                    <div className="flex items-center gap-3 w-full md:w-auto">
+                                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-black text-xl shrink-0">
+                                            {u.full_name.charAt(0)}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-white font-bold truncate">{u.full_name}</p>
+                                            <p className="text-slate-400 text-xs truncate">@{u.username}</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
+                                        
+                                        {/* Fake Follower Injector */}
+                                        <div className="flex items-center bg-white/[0.03] border border-white/10 rounded-xl p-1">
+                                            <button onClick={() => updateBonusFollowers(u.id, -10)} className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-slate-400">-10</button>
+                                            <div className="px-3 text-center min-w-[90px]">
+                                                <p className="text-white font-black text-sm">{u.followers_count}</p>
+                                                <p className="text-[9px] text-green-400 font-bold uppercase tracking-widest">{u.bonus_followers} Fake</p>
+                                            </div>
+                                            <button onClick={() => updateBonusFollowers(u.id, 50)} className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white flex items-center justify-center font-bold text-xs">+50</button>
+                                        </div>
+
+                                        <button 
+                                            onClick={() => handleEditUserClick(u)}
+                                            className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white text-xs font-bold rounded-xl transition-all"
+                                        >
+                                            Edit
+                                        </button>
+                                        <button 
+                                            onClick={() => fullyDeleteUser(u.id)}
+                                            className="px-4 py-2.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-xs font-bold rounded-xl transition-all"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* ════════════════════════════════════
                 ACTIVITY / LOGS SECTION
             ════════════════════════════════════ */}
             {activeSection === "logs" && (
@@ -1042,6 +1226,44 @@ export default function ZestlyAdminPage() {
           </div>
         </main>
       </div>
+
+      {/* 🚀 EDIT USER MODAL (GOD MODE) */}
+      {editingUser && createPortal(
+          <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+              <div className="bg-[#121216] w-full max-w-md rounded-[2rem] p-6 sm:p-8 shadow-2xl border border-white/10 relative">
+                  <button onClick={() => setEditingUser(null)} className="absolute top-6 right-6 text-slate-500 hover:text-white">✕</button>
+                  <h3 className="text-2xl font-black text-white mb-6">Edit User ⚡</h3>
+                  
+                  <form onSubmit={handleEditUserSubmit} className="space-y-4">
+                      <div>
+                          <label className="text-xs text-slate-500 font-bold uppercase tracking-widest pl-1">Full Name</label>
+                          <input type="text" value={editFormData.full_name} onChange={e => setEditFormData({...editFormData, full_name: e.target.value})} className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none text-white mt-1" required />
+                      </div>
+                      <div>
+                          <label className="text-xs text-slate-500 font-bold uppercase tracking-widest pl-1">Username</label>
+                          <input type="text" value={editFormData.username} onChange={e => setEditFormData({...editFormData, username: e.target.value})} className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none text-white mt-1" required />
+                      </div>
+                      <div>
+                          <label className="text-xs text-slate-500 font-bold uppercase tracking-widest pl-1">Bio</label>
+                          <textarea value={editFormData.bio} onChange={e => setEditFormData({...editFormData, bio: e.target.value})} className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none text-white mt-1 resize-none" rows={3} />
+                      </div>
+                      
+                      <button type="submit" className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black py-4 rounded-xl mt-4 hover:scale-[1.02] active:scale-95 transition-all shadow-lg">
+                          Save Changes
+                      </button>
+                  </form>
+              </div>
+          </div>, document.body
+      )}
+
+      {/* TOASTS */}
+      {toast.isOpen && createPortal(
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100000] pointer-events-none animate-in slide-in-from-top-4">
+          <div className={`px-6 py-3.5 rounded-full shadow-2xl text-sm font-bold border whitespace-nowrap ${toast.type === "danger" ? "bg-red-500 text-white border-red-400" : "bg-slate-900 dark:bg-[#1c1c1e] text-white border-slate-700 dark:border-white/10"}`}>
+            {toast.message}
+          </div>
+        </div>, document.body
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
@@ -37,7 +37,10 @@ interface FeedPost {
   authorName: string;
   authorId?: string;
   authorAvatar?: string;
-  likesCount: number;
+  realLikesCount: number; 
+  realViewsCount: number; 
+  likesCount: number;     
+  viewsCount: number;     
   commentsCount: number;
   cuisine: string;
   commentsList: CommentData[];
@@ -59,21 +62,36 @@ const timeAgo = (dateStr?: string) => {
   return `${Math.floor(mins / 1440)}d`;
 };
 
+// 🚀 FIXED: formatNum correctly scoped
+const formatNum = (n: number) => {
+  if (!n) return "0";
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+};
+
 // ─── COMPONENT ────────────────────────────────────────────
 export default function HomeTab({ user }: HomeTabProps) {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [trendingChefs, setTrendingChefs] = useState<any[]>([]);
   const [myProfile, setMyProfile] = useState<any>(null);
-  const [savedRecipeIds, setSavedRecipeIds] = useState<string[]>([]); // 🚀 NEW: Saved State
+  const [savedRecipeIds, setSavedRecipeIds] = useState<string[]>([]); 
   const [isLoading, setIsLoading] = useState(true);
   
+  // 🚀 PAGINATION & INFINITE SCROLL STATES
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const observerTarget = useRef<HTMLDivElement>(null);
+  const POSTS_PER_PAGE = 6;
+
+  // 🚀 ZESTLY GROWTH ALGORITHM STATE
+  const [fakeMode, setFakeMode] = useState(false);
+
   const [alertModal, setAlertModal] = useState({ isOpen: false, message: "" });
   const [toast, setToast] = useState({ isOpen: false, message: "" });
 
   const [activeCommentsPost, setActiveCommentsPost] = useState<FeedPost | null>(null);
   const [commentInput, setCommentInput] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false); 
-  // 🚀 ADVANCED: Track parent comment and sub-replies
   const [replyingTo, setReplyingTo] = useState<{ commentId: string, author: string, isSubReply?: boolean } | null>(null);
 
   const [cookModePost, setCookModePost] = useState<FeedPost | null>(null);
@@ -84,6 +102,7 @@ export default function HomeTab({ user }: HomeTabProps) {
   const [searchMode, setSearchMode] = useState<"all" | "recipes" | "chefs">("all");
   const [isSearchActive, setIsSearchActive] = useState(false); 
   const [searchedChefs, setSearchedChefs] = useState<any[]>([]);
+  const [searchedRecipes, setSearchedRecipes] = useState<FeedPost[]>([]);
   
   const [viewingChef, setViewingChef] = useState<any | null>(null);
   const [viewingChefRecipes, setViewingChefRecipes] = useState<FeedPost[]>([]);
@@ -106,29 +125,72 @@ export default function HomeTab({ user }: HomeTabProps) {
   useEffect(() => {
     setMounted(true);
     syncMyProfile();
-    fetchFeedAndChefs();
+    fetchInitialFeedAndChefs();
   }, [user]);
 
+  // 🚀 THE ILLUSION ENGINE: Live Ticking Engagement
   useEffect(() => {
-    const fetchSearchedChefs = async () => {
-      if ((searchMode === "chefs" || searchMode === "all") && searchQuery.trim().length > 0) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("*")
-          .ilike("full_name", `%${searchQuery}%`)
-          .limit(20);
-        if (data) setSearchedChefs(data);
+    if (!fakeMode) return;
+    
+    const interval = setInterval(() => {
+      setPosts(currentPosts => {
+        if (currentPosts.length === 0) return currentPosts;
+        const newPosts = [...currentPosts];
+        const randomIdx = Math.floor(Math.random() * newPosts.length);
+        const postToBoost = newPosts[randomIdx];
+        
+        newPosts[randomIdx] = {
+          ...postToBoost,
+          viewsCount: postToBoost.viewsCount + Math.floor(Math.random() * 8) + 2, 
+          likesCount: Math.random() > 0.6 ? postToBoost.likesCount + 1 : postToBoost.likesCount
+        };
+        return newPosts;
+      });
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [fakeMode]);
+
+  // 🚀 SERVER-SIDE SEARCH
+  useEffect(() => {
+    const fetchSearchedData = async () => {
+      if (searchQuery.trim().length > 0) {
+        if (searchMode === "chefs" || searchMode === "all") {
+          const { data } = await supabase.from("profiles").select("*").ilike("full_name", `%${searchQuery}%`).limit(20);
+          if (data) setSearchedChefs(data);
+        }
+        if (searchMode === "recipes" || searchMode === "all") {
+           const { data } = await supabase.from("recipes").select("*").ilike("name", `%${searchQuery}%`).limit(20);
+           if (data) {
+              const formatted = await formatRecipesData(data, 0, fakeMode);
+              setSearchedRecipes(formatted);
+           }
+        }
       } else {
         setSearchedChefs([]);
+        setSearchedRecipes([]);
       }
     };
     
-    const delayDebounceFn = setTimeout(() => {
-      fetchSearchedChefs();
-    }, 300);
-
+    const delayDebounceFn = setTimeout(() => { fetchSearchedData(); }, 300);
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery, searchMode]);
+  }, [searchQuery, searchMode, fakeMode]);
+
+  // 🚀 INTERSECTION OBSERVER FOR INFINITE SCROLL
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isFetchingMore && !isLoading && !searchQuery && activeCuisine === "All") {
+          loadMorePosts();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (observerTarget.current) observer.observe(observerTarget.current);
+    
+    return () => observer.disconnect();
+  }, [hasMore, isFetchingMore, isLoading, searchQuery, activeCuisine, page]);
 
   const syncMyProfile = async () => {
     if (!user) return;
@@ -150,81 +212,142 @@ export default function HomeTab({ user }: HomeTabProps) {
       const { data: newProfile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
       if (newProfile) {
         setMyProfile(newProfile);
-        setSavedRecipeIds(newProfile.saved_recipes || []); // 🚀 Sync DB save to state
+        setSavedRecipeIds(newProfile.saved_recipes || []);
       }
     } else {
       setMyProfile(data);
-      setSavedRecipeIds(data.saved_recipes || []); // 🚀 Sync DB save to state
+      setSavedRecipeIds(data.saved_recipes || []);
     }
   };
 
-  const fetchFeedAndChefs = async () => {
-    const { data: recipesData, error: recipesError } = await supabase
+  // 🚀 CORE FORMATTING LOGIC
+  const formatRecipesData = async (recipesData: any[], startIndex: number, isFakeOn: boolean) => {
+    const authorIds = [...new Set(recipesData.map(r => r.author_id).filter(Boolean))];
+    const { data: profiles } = await supabase.from("profiles").select("*").in("id", authorIds);
+    const profileMap = new Map();
+    profiles?.forEach(p => profileMap.set(p.id, p));
+
+    return recipesData.map((item, localIndex) => {
+      const index = startIndex + localIndex;
+      const mockCuisines = ["Indian", "Italian", "Mexican", "Chinese", "Desserts"];
+      const assignedCuisine = mockCuisines[index % mockCuisines.length];
+
+      const safeComments: CommentData[] = (item.comments_data || []).map((c: any, i: number) => ({
+        id: c.id || `legacy_${i}_${Date.now()}`,
+        author: c.author || "Chef",
+        avatar_url: c.avatar_url || null,
+        text: c.text || "",
+        replies: c.replies || [],
+        created_at: c.created_at || new Date().toISOString()
+      }));
+
+      const totalComments = safeComments.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0);
+      const authorProfile = profileMap.get(item.author_id);
+      
+      const realLikes = item.likes_count || 0;
+      const realViews = item.views_count || Math.floor(Math.random() * 20); 
+
+      let displayLikes = realLikes;
+      let displayViews = realViews;
+
+      if (isFakeOn) {
+          const ageInHours = (Date.now() - new Date(item.created_at || Date.now()).getTime()) / (1000 * 60 * 60);
+          const fakeLikesBoost = Math.floor(ageInHours * 5) + 35 + (index * 2); 
+          const fakeViewsBoost = fakeLikesBoost * (Math.floor(Math.random() * 4) + 6); 
+          displayLikes = realLikes + fakeLikesBoost;
+          displayViews = realViews + fakeViewsBoost;
+      }
+
+      return {
+        id: item.id,
+        name: item.name,
+        type: item.type || "Veg",
+        emoji: item.emoji || "🍲",
+        gradient: item.gradient || "from-orange-500 to-red-600",
+        is_liked: item.is_liked || false,
+        imageUrl: item.image_url,
+        authorName: item.author_name || "Chef Zestly", 
+        authorId: item.author_id || item.user_id,
+        authorAvatar: authorProfile?.avatar_url || null, 
+        realLikesCount: realLikes,
+        realViewsCount: realViews,
+        likesCount: displayLikes,
+        viewsCount: displayViews,
+        commentsList: safeComments, 
+        commentsCount: totalComments,
+        cuisine: assignedCuisine,
+        ingredients: item.ingredients || ["Secret Magic Ingredient"],
+        steps: item.steps || ["Mix everything.", "Cook well and serve hot!"],
+        time: item.time || "30 Min",
+        calories: item.calories || 400,
+        difficulty: item.difficulty || "Medium"
+      };
+    });
+  };
+
+  // 🚀 INITIAL FETCH (PAGE 0)
+  const fetchInitialFeedAndChefs = async () => {
+    setIsLoading(true);
+    const { data: settingsData } = await supabase.from("app_settings").select("fake_engagement_enabled").eq("id", 1).single();
+    const isFakeOn = settingsData ? settingsData.fake_engagement_enabled : false;
+    setFakeMode(isFakeOn);
+
+    const { data: profilesData } = await supabase.from("profiles").select("*").limit(10);
+    if (profilesData && profilesData.length > 0) {
+      const formattedChefs = profilesData.map(p => ({
+          ...p,
+          followers: isFakeOn ? (p.followers_count || 0) + (p.bonus_followers || 0) + 1200 : (p.followers_count || 0)
+      })).sort((a, b) => b.followers - a.followers);
+      setTrendingChefs(formattedChefs);
+    } else {
+      setTrendingChefs([{ id: "mock1", full_name: "Chef Zestly", followers: 12500 }]);
+    }
+
+    const { data: recipesData } = await supabase
       .from("recipes")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .range(0, POSTS_PER_PAGE - 1);
 
-    if (recipesError) console.error("Error fetching recipes:", recipesError);
-
-    const { data: profilesData } = await supabase.from("profiles").select("*");
-    
-    const profileMap = new Map();
-    if (profilesData) {
-      profilesData.forEach(p => profileMap.set(p.id, p));
-    }
-
-    if (!recipesError && recipesData) {
-      const formattedPosts: FeedPost[] = recipesData.map((item, index) => {
-        const mockCuisines = ["Indian", "Italian", "Mexican", "Chinese", "Desserts"];
-        const assignedCuisine = mockCuisines[index % mockCuisines.length];
-
-        const safeComments: CommentData[] = (item.comments_data || []).map((c: any, i: number) => ({
-          id: c.id || `legacy_${i}_${Date.now()}`,
-          author: c.author || "Chef",
-          avatar_url: c.avatar_url || null,
-          text: c.text || "",
-          replies: c.replies || [],
-          created_at: c.created_at || new Date().toISOString()
-        }));
-
-        const totalComments = safeComments.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0);
-        
-        const authorProfile = profileMap.get(item.author_id);
-
-        return {
-          id: item.id,
-          name: item.name,
-          type: item.type || "Veg",
-          emoji: item.emoji || "🍲",
-          gradient: item.gradient || "from-orange-500 to-red-600",
-          is_liked: item.is_liked || false,
-          imageUrl: item.image_url,
-          authorName: item.author_name || "Chef Zestly", 
-          authorId: item.author_id || item.user_id,
-          authorAvatar: authorProfile?.avatar_url || null, 
-          likesCount: item.likes_count || 0,
-          commentsList: safeComments, 
-          commentsCount: totalComments,
-          cuisine: assignedCuisine,
-          ingredients: item.ingredients || ["Secret Magic Ingredient"],
-          steps: item.steps || ["Mix everything.", "Cook well and serve hot!"],
-          time: item.time || "30 Min",
-          calories: item.calories || 400,
-          difficulty: item.difficulty || "Medium"
-        };
-      });
-      setPosts(formattedPosts);
-    }
-
-    if (profilesData && profilesData.length > 0) {
-      setTrendingChefs(profilesData.slice(0, 10));
-    } else {
-      setTrendingChefs([
-        { id: "mock1", full_name: "Chef Zestly", followers: 12500 }, 
-        { id: "mock2", full_name: "Chef Rahul", followers: 9800 }
-      ]);
+    if (recipesData) {
+      const formatted = await formatRecipesData(recipesData, 0, isFakeOn);
+      setPosts(formatted);
+      setPage(1);
+      if (recipesData.length < POSTS_PER_PAGE) setHasMore(false);
     }
     setIsLoading(false);
+  };
+
+  // 🚀 LOAD MORE POSTS (INFINITE SCROLL)
+  const loadMorePosts = async () => {
+    if (isFetchingMore || !hasMore || isLoading) return;
+    setIsFetchingMore(true);
+
+    const from = page * POSTS_PER_PAGE;
+    const to = from + POSTS_PER_PAGE - 1;
+
+    const { data: recipesData } = await supabase
+      .from("recipes")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (recipesData && recipesData.length > 0) {
+      const formatted = await formatRecipesData(recipesData, page * POSTS_PER_PAGE, fakeMode);
+      
+      // 🚀 FIXED: Prevent duplicate keys by filtering out posts we already have
+      setPosts(prev => {
+        const existingIds = new Set(prev.map(p => p.id));
+        const newUniquePosts = formatted.filter(p => !existingIds.has(p.id));
+        return [...prev, ...newUniquePosts];
+      });
+
+      setPage(p => p + 1);
+      if (recipesData.length < POSTS_PER_PAGE) setHasMore(false);
+    } else {
+      setHasMore(false);
+    }
+    setIsFetchingMore(false);
   };
 
   const showAlert = (message: string) => setAlertModal({ isOpen: true, message });
@@ -242,12 +365,10 @@ export default function HomeTab({ user }: HomeTabProps) {
     return true;
   };
 
-  // 🚀 NEW: Save Recipe Logic
   const toggleSave = async (recipeId: string) => {
     if (!checkAuth()) return;
     const isAlreadySaved = savedRecipeIds.includes(recipeId);
     
-    // Update local UI state immediately for snap feel
     const updatedSavedIds = isAlreadySaved 
       ? savedRecipeIds.filter(id => id !== recipeId) 
       : [...savedRecipeIds, recipeId];
@@ -255,7 +376,6 @@ export default function HomeTab({ user }: HomeTabProps) {
     setSavedRecipeIds(updatedSavedIds);
     showToast(isAlreadySaved ? "Removed from Vault 🔓" : "Saved to Private Vault 🔒✨");
 
-    // Update Supabase Database
     await supabase.from("profiles").update({ saved_recipes: updatedSavedIds }).eq("id", user.id);
   };
 
@@ -270,9 +390,15 @@ export default function HomeTab({ user }: HomeTabProps) {
     const { count: followersCount } = await supabase.from("follows").select("*", { count: 'exact', head: true }).eq("following_id", chefId);
     const { count: followingCount } = await supabase.from("follows").select("*", { count: 'exact', head: true }).eq("follower_id", chefId);
     const { data: followCheck } = await supabase.from("follows").select("id").match({ follower_id: user.id, following_id: chefId }).single();
-    const chefPosts = posts.filter(p => p.authorId === chefId);
     
-    setViewingChefRecipes(chefPosts);
+    const { data: cPosts } = await supabase.from("recipes").select("*").eq("author_id", chefId);
+    const formattedChefPosts = cPosts ? await formatRecipesData(cPosts, 0, fakeMode) : [];
+    
+    const realF = followersCount || 0;
+    const bonusF = profileData?.bonus_followers || 0;
+    const finalFollowers = fakeMode ? realF + bonusF + 1200 : realF;
+
+    setViewingChefRecipes(formattedChefPosts);
     setIsFollowingChef(!!followCheck);
     setViewingChef({
       id: chefId,
@@ -280,9 +406,9 @@ export default function HomeTab({ user }: HomeTabProps) {
       username: profileData?.username || `zestly_${chefId.substring(0, 4)}`,
       bio: profileData?.bio || "Passionate Chef at Zestly 🍳",
       avatar_url: profileData?.avatar_url || null,
-      followersCount: followersCount || 0,
+      followersCount: finalFollowers,
       followingCount: followingCount || 0,
-      postsCount: chefPosts.length
+      postsCount: formattedChefPosts.length
     });
   };
 
@@ -320,17 +446,22 @@ export default function HomeTab({ user }: HomeTabProps) {
 
   const toggleLike = async (id: string) => {
     if (!checkAuth()) return;
-    const post = posts.find(p => p.id === id);
+    const post = posts.find(p => p.id === id) || searchedRecipes.find(p => p.id === id);
     if (!post) return;
 
     const isNowLiked = !post.is_liked;
-    const newLikesCount = isNowLiked ? post.likesCount + 1 : Math.max(0, post.likesCount - 1);
+    
+    const newRealLikesCount = isNowLiked ? post.realLikesCount + 1 : Math.max(0, post.realLikesCount - 1);
+    const newDisplayLikes = isNowLiked ? post.likesCount + 1 : Math.max(0, post.likesCount - 1);
 
-    setPosts(posts.map(p => p.id === id ? { ...p, is_liked: isNowLiked, likesCount: newLikesCount } : p));
+    const updateMap = (pList: FeedPost[]) => pList.map(p => p.id === id ? { ...p, is_liked: isNowLiked, realLikesCount: newRealLikesCount, likesCount: newDisplayLikes } : p);
+    
+    setPosts(updateMap);
+    setSearchedRecipes(updateMap);
     
     const { error } = await supabase.from("recipes").update({ 
       is_liked: isNowLiked, 
-      likes_count: newLikesCount 
+      likes_count: newRealLikesCount 
     }).eq("id", id);
 
     if (error) showToast("Failed to save like!");
@@ -345,7 +476,13 @@ export default function HomeTab({ user }: HomeTabProps) {
     }
   };
 
-  // 🚀 NEW: Advanced Native Share Logic
+  const recordView = async (post: FeedPost) => {
+      const updateMap = (pList: FeedPost[]) => pList.map(p => p.id === post.id ? { ...p, viewsCount: p.viewsCount + 1, realViewsCount: p.realViewsCount + 1 } : p);
+      setPosts(updateMap);
+      setSearchedRecipes(updateMap);
+      await supabase.from("recipes").update({ views_count: post.realViewsCount + 1 }).eq("id", post.id);
+  };
+
   const handleShare = async (postName: string) => {
     const shareUrl = window.location.href;
     const shareTitle = `Zestly Recipe: ${postName}`;
@@ -360,7 +497,6 @@ export default function HomeTab({ user }: HomeTabProps) {
         console.log("Share sheet cancelled.");
       }
     }
-    // Fallback to copy link
     navigator.clipboard.writeText(`${shareText}${shareUrl}`);
     showToast(`Link copied to clipboard! 📋`);
   };
@@ -379,7 +515,6 @@ export default function HomeTab({ user }: HomeTabProps) {
     setIsSubmittingComment(true); 
     const currentUserName = myProfile?.full_name?.split(" ")[0] || user?.user_metadata?.full_name?.split(" ")[0] || "Chef"; 
     
-    // Auto-prefix username for sub-replies to look like Instagram
     const finalText = replyingTo?.isSubReply && !text.startsWith(`@${replyingTo.author}`) 
       ? `@${replyingTo.author} ${text}` 
       : text;
@@ -396,7 +531,6 @@ export default function HomeTab({ user }: HomeTabProps) {
     let newCommentsList = [...activeCommentsPost.commentsList];
 
     if (replyingTo) {
-      // Add as a reply to the master comment thread
       newCommentsList = newCommentsList.map(cmt => {
         if (cmt.id === replyingTo.commentId) {
           return { ...cmt, replies: [...(cmt.replies || []), newEntry] };
@@ -404,26 +538,24 @@ export default function HomeTab({ user }: HomeTabProps) {
         return cmt;
       });
     } else {
-      // Add as a main comment
       newCommentsList.push(newEntry);
     }
 
     const totalComments = newCommentsList.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0);
     const updatedPost = { ...activeCommentsPost, commentsCount: totalComments, commentsList: newCommentsList };
     
-    // 🔥 CRITICAL FIX: Ensure valid JSON to prevent Supabase rejection
     const safeJsonData = JSON.parse(JSON.stringify(newCommentsList));
-
     const { error } = await supabase.from("recipes").update({ comments_data: safeJsonData }).eq("id", activeCommentsPost.id);
 
     if (!error) {
-      setPosts(posts.map(p => p.id === activeCommentsPost.id ? updatedPost : p));
+      const updateMap = (pList: FeedPost[]) => pList.map(p => p.id === activeCommentsPost.id ? updatedPost : p);
+      setPosts(updateMap);
+      setSearchedRecipes(updateMap);
       setActiveCommentsPost(updatedPost);
       setCommentInput("");
       setReplyingTo(null);
       showToast(replyingTo ? "Reply posted! 💬" : "Comment posted! 💬");
     } else {
-      console.error("DB Error:", error);
       showToast("Failed to post comment. Check DB!");
     }
     setIsSubmittingComment(false); 
@@ -431,20 +563,20 @@ export default function HomeTab({ user }: HomeTabProps) {
 
   const openCookMode = (post: FeedPost) => {
     if (!checkAuth()) return;
+    recordView(post); 
     setCookModePost(post);
     setPortions(1);
     setCurrentStep(-1);
   };
 
-  const filteredPosts = useMemo(() => {
+  const displayPosts = useMemo(() => {
+    if (searchQuery && (searchMode === "recipes" || searchMode === "all")) {
+        return searchedRecipes;
+    }
     let result = posts;
     if (activeCuisine !== "All") result = result.filter(post => post.cuisine === activeCuisine);
-    if (searchQuery && (searchMode === "recipes" || searchMode === "all")) {
-      const lowerQuery = searchQuery.toLowerCase();
-      result = result.filter(post => post.name.toLowerCase().includes(lowerQuery) || post.type.toLowerCase().includes(lowerQuery));
-    }
     return result;
-  }, [posts, searchQuery, activeCuisine, searchMode]);
+  }, [posts, searchedRecipes, searchQuery, activeCuisine, searchMode]);
 
   const featuredPost = posts.length > 0 ? posts[0] : null;
 
@@ -485,12 +617,14 @@ export default function HomeTab({ user }: HomeTabProps) {
       {!isSearchActive && trendingChefs.length > 0 && (
         <div className="w-full max-w-5xl pt-2">
           <div className="flex items-center justify-between mb-2 px-5 sm:px-1">
-            <h3 className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Trending Chefs</h3>
+            <h3 className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                Trending Chefs {fakeMode && <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>}
+            </h3>
           </div>
           <div className="flex gap-4 overflow-x-auto py-3 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {trendingChefs.map((chef, i, arr) => (
               <div key={i} onClick={() => openChefProfile(chef.id, chef.full_name)} className={`flex flex-col items-center shrink-0 snap-start cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${i === 0 ? "ml-5 sm:ml-1" : ""} ${i === arr.length - 1 ? "mr-5 sm:mr-1" : ""}`}>
-                <div className="relative w-16 h-16 sm:w-[76px] sm:h-[76px] rounded-full p-[3px] bg-linear-to-tr from-orange-500 via-red-500 to-purple-500 group-hover:scale-105 group-active:scale-95 transition-all duration-300 shadow-md mb-2">
+                <div className="relative w-16 h-16 sm:w-[76px] sm:h-[76px] rounded-full p-[3px] bg-gradient-to-tr from-orange-500 via-red-500 to-purple-500 group-hover:scale-105 group-active:scale-95 transition-all duration-300 shadow-md mb-2">
                   <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white border-[3px] border-white dark:border-[#07070a] transition-colors overflow-hidden">
                     {chef.avatar_url ? (
                       <img src={chef.avatar_url} className="w-full h-full object-cover" alt={chef.full_name} />
@@ -535,7 +669,7 @@ export default function HomeTab({ user }: HomeTabProps) {
               <div className="flex flex-col gap-4 mt-4">
                 {searchedChefs.map((chef, i) => (
                   <div key={i} onClick={() => openChefProfile(chef.id, chef.full_name)} className="flex items-center gap-4 bg-white dark:bg-[#1c1c1e] p-4 rounded-[1.5rem] border border-slate-200 dark:border-white/5 cursor-pointer shadow-sm active:scale-95 transition-all">
-                    <div className="w-14 h-14 rounded-full bg-linear-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-xl font-bold overflow-hidden">
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-xl font-bold overflow-hidden">
                       {chef.avatar_url ? <img src={chef.avatar_url} className="w-full h-full object-cover" /> : chef.full_name.charAt(0).toUpperCase()}
                     </div>
                     <div>
@@ -547,20 +681,20 @@ export default function HomeTab({ user }: HomeTabProps) {
               </div>
             )
           ) : searchMode === "recipes" ? (
-            filteredPosts.length === 0 ? (
+            displayPosts.length === 0 ? (
               <p className="text-slate-500 text-sm font-medium mt-4">No recipes found matching "{searchQuery}"</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 mt-4">
-                {filteredPosts.map((post) => (
+                {displayPosts.map((post) => (
                   <div key={post.id} onClick={() => openCookMode(post)} className="aspect-square relative cursor-pointer group outline-none [-webkit-tap-highlight-color:transparent] overflow-hidden">
-                    {post.imageUrl ? <img src={post.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> : <div className={`w-full h-full bg-linear-to-br ${post.gradient} flex items-center justify-center`}><span className="text-3xl sm:text-5xl">{post.emoji}</span></div>}
+                    {post.imageUrl ? <img src={post.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> : <div className={`w-full h-full bg-gradient-to-br ${post.gradient} flex items-center justify-center`}><span className="text-3xl sm:text-5xl">{post.emoji}</span></div>}
                   </div>
                 ))}
               </div>
             )
           ) : (
             <div className="flex flex-col gap-8 mt-4">
-              {searchedChefs.length === 0 && filteredPosts.length === 0 ? (
+              {searchedChefs.length === 0 && displayPosts.length === 0 ? (
                 <p className="text-slate-500 text-sm font-medium mt-4">No results found matching "{searchQuery}"</p>
               ) : (
                 <>
@@ -570,7 +704,7 @@ export default function HomeTab({ user }: HomeTabProps) {
                       <div className="flex flex-col gap-3">
                         {searchedChefs.slice(0, 3).map((chef, i) => (
                           <div key={i} onClick={() => openChefProfile(chef.id, chef.full_name)} className="flex items-center gap-4 bg-white dark:bg-[#1c1c1e] p-3 rounded-[1.2rem] border border-slate-200 dark:border-white/5 cursor-pointer shadow-sm active:scale-95 transition-all">
-                            <div className="w-12 h-12 rounded-full bg-linear-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-lg font-bold overflow-hidden">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-lg font-bold overflow-hidden">
                               {chef.avatar_url ? <img src={chef.avatar_url} className="w-full h-full object-cover" /> : chef.full_name.charAt(0).toUpperCase()}
                             </div>
                             <div>
@@ -583,13 +717,13 @@ export default function HomeTab({ user }: HomeTabProps) {
                     </div>
                   )}
 
-                  {filteredPosts.length > 0 && (
+                  {displayPosts.length > 0 && (
                     <div className="flex flex-col gap-3">
                       <h4 className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Top Recipes</h4>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
-                        {filteredPosts.map((post) => (
+                        {displayPosts.map((post) => (
                           <div key={post.id} onClick={() => openCookMode(post)} className="aspect-square relative cursor-pointer group outline-none [-webkit-tap-highlight-color:transparent] overflow-hidden">
-                            {post.imageUrl ? <img src={post.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> : <div className={`w-full h-full bg-linear-to-br ${post.gradient} flex items-center justify-center`}><span className="text-3xl sm:text-5xl">{post.emoji}</span></div>}
+                            {post.imageUrl ? <img src={post.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> : <div className={`w-full h-full bg-gradient-to-br ${post.gradient} flex items-center justify-center`}><span className="text-3xl sm:text-5xl">{post.emoji}</span></div>}
                           </div>
                         ))}
                       </div>
@@ -629,9 +763,9 @@ export default function HomeTab({ user }: HomeTabProps) {
                 {featuredPost.imageUrl ? (
                   <img src={featuredPost.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                 ) : (
-                  <div className={`w-full h-full bg-linear-to-br ${featuredPost.gradient} flex items-center justify-center`}><span className="text-8xl">{featuredPost.emoji}</span></div>
+                  <div className={`w-full h-full bg-gradient-to-br ${featuredPost.gradient} flex items-center justify-center`}><span className="text-8xl">{featuredPost.emoji}</span></div>
                 )}
-                <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/40 to-transparent p-6 flex flex-col justify-end">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-6 flex flex-col justify-end">
                   <div className="bg-orange-500/20 backdrop-blur-md text-orange-400 border border-orange-500/30 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full w-fit mb-3 flex items-center gap-1.5">🔥 Trending</div>
                   <h3 className="text-3xl font-black text-white leading-tight mb-2 drop-shadow-md">{featuredPost.name}</h3>
                   <div className="flex gap-5 mt-4 text-xs font-bold text-slate-300">
@@ -645,16 +779,19 @@ export default function HomeTab({ user }: HomeTabProps) {
 
           <div className="mt-4 w-full max-w-5xl">
             <div className="flex justify-between items-end mb-5 px-5 sm:px-1">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">{activeCuisine === "All" ? "Global Feed" : `${activeCuisine} Cuisine`}</h3>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                  {activeCuisine === "All" ? "Global Feed" : `${activeCuisine} Cuisine`}
+                  {fakeMode && <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_#4ade80]"></span>}
+              </h3>
             </div>
             
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-20 gap-4 cursor-wait text-center"><div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div></div>
-            ) : filteredPosts.length === 0 ? (
+            ) : displayPosts.length === 0 ? (
               <div className="text-center py-16 px-6 border-2 border-dashed border-slate-300 dark:border-white/10 rounded-[2.5rem] bg-white dark:bg-white/[0.01] mx-4"><p className="text-slate-500 dark:text-slate-400 font-medium text-sm">No recipes found!</p></div>
             ) : (
-              <div className="flex flex-col gap-0 sm:grid sm:grid-cols-2 sm:gap-7 pb-4">
-                {filteredPosts.map((post) => (
+              <div className="flex flex-col gap-0 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-7 pb-4">
+                {displayPosts.map((post) => (
                   <div key={post.id} className="flex flex-col w-full border-b-[8px] sm:border-b-0 border-slate-100 dark:border-[#121216] sm:bg-transparent">
                     
                     <div className="relative bg-white dark:bg-[#0b0b0e] border-y sm:border border-slate-200/80 dark:border-white/10 rounded-none sm:rounded-[2.5rem] overflow-hidden shadow-none sm:shadow-md dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col">
@@ -662,7 +799,7 @@ export default function HomeTab({ user }: HomeTabProps) {
                       {/* Author Header */}
                       <div className="py-3 px-4 sm:p-5 flex justify-between items-center bg-transparent border-b border-slate-100 dark:border-white/5 z-10">
                         <div onClick={() => openChefProfile(post.authorId || "mock", post.authorName)} className="flex items-center gap-3 cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                          <div className="w-9 h-9 rounded-full bg-linear-to-tr from-orange-500 to-red-500 p-[2px] shadow">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-orange-500 to-red-500 p-[2px] shadow">
                             <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-xs font-black text-slate-900 dark:text-white uppercase transition-colors overflow-hidden">
                               {post.authorAvatar ? <img src={post.authorAvatar} className="w-full h-full object-cover" /> : post.authorName.charAt(0).toUpperCase()}
                             </div>
@@ -677,8 +814,13 @@ export default function HomeTab({ user }: HomeTabProps) {
                         </button>
                       </div>
 
-                      <div onClick={() => openCookMode(post)} className={`w-full aspect-square sm:aspect-auto sm:h-72 relative flex items-center justify-center cursor-pointer sm:overflow-hidden outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${!post.imageUrl ? `bg-linear-to-br ${post.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
+                      <div onClick={() => openCookMode(post)} className={`w-full aspect-square sm:aspect-auto sm:h-72 relative flex items-center justify-center cursor-pointer sm:overflow-hidden outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${!post.imageUrl ? `bg-gradient-to-br ${post.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
                         {post.imageUrl ? <img src={post.imageUrl} className="w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" /> : <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{post.emoji}</span>}
+                        {/* 🚀 VIEWS BADGE OVERLAY */}
+                        <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                            {formatNum(post.viewsCount)}
+                        </div>
                       </div>
 
                       <div className="pt-3 pb-5 px-4 sm:p-5 flex-1 flex flex-col justify-between bg-transparent transition-colors z-10">
@@ -698,13 +840,17 @@ export default function HomeTab({ user }: HomeTabProps) {
                                 <svg className="w-7 h-7 text-slate-900 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
                               </button>
                             </div>
-                            {/* 🚀 UPGRADED SAVE BUTTON */}
+                            
                             <button onClick={() => toggleSave(post.id)} className={`outline-none active:scale-90 transition-all duration-300 ${savedRecipeIds.includes(post.id) ? 'text-orange-500' : 'text-slate-900 dark:text-white'}`}>
                               <svg className="w-7 h-7" fill={savedRecipeIds.includes(post.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
                             </button>
                           </div>
                           
-                          <p className="font-bold text-sm text-slate-900 dark:text-white mb-1.5">{post.likesCount} likes</p>
+                          <div className="flex items-center gap-3 mb-1.5">
+                              <p className="font-bold text-sm text-slate-900 dark:text-white">{formatNum(post.likesCount)} likes</p>
+                              <span className="text-slate-300 dark:text-slate-700">•</span>
+                              <p className="font-bold text-sm text-slate-500 flex items-center gap-1"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg> {formatNum(post.viewsCount)}</p>
+                          </div>
                           <p className="text-sm text-slate-900 dark:text-white leading-relaxed line-clamp-2"><strong className="mr-1.5 font-bold cursor-pointer hover:underline" onClick={() => openChefProfile(post.authorId || "mock", post.authorName)}>{post.authorName}</strong> {post.name} - The ultimate {post.type} treat! 🥘✨</p>
                           
                           {post.commentsCount > 0 && (
@@ -718,6 +864,14 @@ export default function HomeTab({ user }: HomeTabProps) {
                   </div>
                 ))}
               </div>
+            )}
+            
+            {/* 🚀 INFINITE SCROLL LOADER / TARGET */}
+            {!searchQuery && activeCuisine === "All" && (
+               <div ref={observerTarget} className="w-full flex flex-col items-center justify-center py-8">
+                 {isFetchingMore && <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>}
+                 {!hasMore && posts.length > 0 && <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-4">You're all caught up! 🏁</p>}
+               </div>
             )}
           </div>
         </>
@@ -738,7 +892,7 @@ export default function HomeTab({ user }: HomeTabProps) {
             
             <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               <div className="px-6 py-8 flex flex-col sm:flex-row items-start sm:items-center gap-6 sm:gap-10">
-                <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-linear-to-tr from-orange-500 to-red-500 p-1 shrink-0">
+                <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-gradient-to-tr from-orange-500 to-red-500 p-1 shrink-0">
                   <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-4xl sm:text-5xl font-black text-slate-900 dark:text-white uppercase overflow-hidden">
                     {viewingChef.avatar_url ? <img src={viewingChef.avatar_url} className="w-full h-full object-cover" /> : viewingChef.full_name.charAt(0).toUpperCase()}
                   </div>
@@ -746,9 +900,9 @@ export default function HomeTab({ user }: HomeTabProps) {
                 
                 <div className="flex-1 w-full">
                   <div className="flex justify-around sm:justify-start sm:gap-12 mb-5 text-center sm:text-left">
-                    <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{viewingChef.postsCount}</span><span className="text-xs text-slate-500 font-bold">Posts</span></div>
-                    <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{viewingChef.followersCount}</span><span className="text-xs text-slate-500 font-bold">Followers</span></div>
-                    <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{viewingChef.followingCount}</span><span className="text-xs text-slate-500 font-bold">Following</span></div>
+                    <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{formatNum(viewingChef.postsCount)}</span><span className="text-xs text-slate-500 font-bold">Posts</span></div>
+                    <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{formatNum(viewingChef.followersCount)}</span><span className="text-xs text-slate-500 font-bold">Followers</span></div>
+                    <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{formatNum(viewingChef.followingCount)}</span><span className="text-xs text-slate-500 font-bold">Following</span></div>
                   </div>
 
                   <div className="mb-5">
@@ -785,8 +939,12 @@ export default function HomeTab({ user }: HomeTabProps) {
                       {post.imageUrl ? (
                         <img src={post.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                       ) : (
-                        <div className={`w-full h-full bg-linear-to-br ${post.gradient} flex items-center justify-center`}><span className="text-3xl sm:text-5xl">{post.emoji}</span></div>
+                        <div className={`w-full h-full bg-gradient-to-br ${post.gradient} flex items-center justify-center`}><span className="text-3xl sm:text-5xl">{post.emoji}</span></div>
                       )}
+                      <div className="absolute top-2 right-2 bg-black/50 text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                        {formatNum(post.viewsCount)}
+                      </div>
                     </div>
                   ))
                 )}
@@ -815,19 +973,16 @@ export default function HomeTab({ user }: HomeTabProps) {
                    {activeCommentsPost.commentsList.map((cmt) => (
                      <div key={cmt.id} className="flex gap-3 relative">
                        
-                       {/* Avatar Container with Thread Line */}
                        <div className="flex flex-col items-center gap-2">
-                         <div className="w-9 h-9 rounded-full bg-linear-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-xs font-bold shrink-0 overflow-hidden z-10 shadow-sm">
+                         <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-xs font-bold shrink-0 overflow-hidden z-10 shadow-sm">
                            {cmt.avatar_url ? <img src={cmt.avatar_url} className="w-full h-full object-cover" /> : cmt.author.charAt(0).toUpperCase()}
                          </div>
-                         {/* Instagram style thread line for replies */}
                          {cmt.replies && cmt.replies.length > 0 && (
                            <div className="w-[2px] bg-slate-200 dark:bg-white/10 absolute top-10 bottom-4 left-[17px] z-0"></div>
                          )}
                        </div>
 
                        <div className="w-full pb-2">
-                         {/* Main Comment Bubble */}
                          <div className="bg-slate-50 dark:bg-white/5 p-3.5 rounded-2xl rounded-tl-none w-fit min-w-[120px] max-w-full">
                            <p className="font-bold text-xs text-slate-900 dark:text-white mb-1">
                              {cmt.author} 
@@ -836,12 +991,10 @@ export default function HomeTab({ user }: HomeTabProps) {
                            <p className="text-[13px] text-slate-700 dark:text-slate-300 break-words leading-relaxed">{cmt.text}</p>
                          </div>
                          
-                         {/* Reply Action */}
                          <button onClick={() => setReplyingTo({ commentId: cmt.id, author: cmt.author })} className="text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 mt-2 ml-2 transition-colors outline-none cursor-pointer">
                            Reply
                          </button>
 
-                         {/* Sub-Replies List */}
                          {cmt.replies && cmt.replies.length > 0 && (
                            <div className="flex flex-col gap-4 mt-4">
                              {cmt.replies.map(reply => (
@@ -856,7 +1009,6 @@ export default function HomeTab({ user }: HomeTabProps) {
                                        <span className="text-[9px] text-slate-400 font-normal ml-1.5">{timeAgo(reply.created_at)}</span>
                                      </p>
                                      <p className="text-[13px] text-slate-700 dark:text-slate-300 break-words leading-relaxed">
-                                       {/* Highlight @username logically */}
                                        {reply.text.startsWith('@') ? (
                                          <>
                                            <span className="text-blue-500 font-medium mr-1">{reply.text.split(' ')[0]}</span>
@@ -882,7 +1034,6 @@ export default function HomeTab({ user }: HomeTabProps) {
                )}
             </div>
 
-            {/* Replying Status Bar */}
             {replyingTo && (
               <div className="shrink-0 px-6 py-2 bg-slate-100 dark:bg-[#252528] flex justify-between items-center border-t border-slate-200 dark:border-white/10">
                 <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Replying to {replyingTo.author}...</span>
@@ -890,7 +1041,6 @@ export default function HomeTab({ user }: HomeTabProps) {
               </div>
             )}
 
-            {/* Input Box */}
             <div className="shrink-0 p-4 border-t border-slate-100 dark:border-white/10 flex gap-3 items-center">
                <input 
                  type="text" 
@@ -938,7 +1088,7 @@ export default function HomeTab({ user }: HomeTabProps) {
             <div className="flex-1 overflow-y-auto px-6 sm:px-10 py-10 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               {currentStep === -1 && (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-10">
-                  <div className="bg-linear-to-r from-orange-50 to-red-50 dark:from-orange-500/10 dark:to-red-500/5 border border-orange-200 dark:border-orange-500/20 p-6 rounded-[2rem] flex justify-between items-center">
+                  <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-500/10 dark:to-red-500/5 border border-orange-200 dark:border-orange-500/20 p-6 rounded-[2rem] flex justify-between items-center">
                     <div>
                       <span className="text-orange-600 dark:text-orange-400 font-extrabold text-base block">Serving Size</span>
                     </div>
@@ -964,13 +1114,13 @@ export default function HomeTab({ user }: HomeTabProps) {
 
               {currentStep >= 0 && (
                 <div className="flex flex-col items-center justify-center h-full text-center space-y-10 animate-in zoom-in-95 duration-500">
-                  <div className="w-32 h-32 rounded-full bg-linear-to-br from-orange-400 to-red-500 flex items-center justify-center text-5xl font-black text-white shadow-[0_8px_30px_#f9731666]">{currentStep + 1}</div>
+                  <div className="w-32 h-32 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-5xl font-black text-white shadow-[0_8px_30px_#f9731666]">{currentStep + 1}</div>
                   <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-800 dark:text-white px-4 leading-relaxed">{cookModePost.steps[currentStep]}</h2>
                 </div>
               )}
             </div>
 
-            <div className="shrink-0 p-6 sm:px-10 pb-8 bg-linear-to-t from-white dark:from-[#07070a] to-transparent relative z-20">
+            <div className="shrink-0 p-6 sm:px-10 pb-8 bg-gradient-to-t from-white dark:from-[#07070a] to-transparent relative z-20">
               {currentStep === -1 ? (
                 <button onClick={() => setCurrentStep(0)} className="cursor-pointer w-full bg-slate-900 dark:bg-white text-white dark:text-black font-black text-xl py-5 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all outline-none [-webkit-tap-highlight-color:transparent] shadow-[0_8px_30px_#00000033] dark:shadow-[0_8px_30px_#ffffff33]">Let's Start Cooking</button>
               ) : (
