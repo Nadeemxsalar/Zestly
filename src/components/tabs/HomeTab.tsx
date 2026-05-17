@@ -37,6 +37,7 @@ interface FeedPost {
   authorName: string;
   authorId?: string;
   authorAvatar?: string;
+  authorIsVerified: boolean; 
   realLikesCount: number; 
   realViewsCount: number; 
   likesCount: number;     
@@ -62,11 +63,40 @@ const timeAgo = (dateStr?: string) => {
   return `${Math.floor(mins / 1440)}d`;
 };
 
-// 🚀 FIXED: formatNum correctly scoped
 const formatNum = (n: number) => {
   if (!n) return "0";
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 };
+
+// 🚀 REUSABLE VERIFIED BADGE COMPONENT (FIXED POSITIONING)
+const VerifiedBadge = ({ sizeClass = "w-5 h-5", noTooltip = false, containerClass = "" }: { sizeClass?: string, noTooltip?: boolean, containerClass?: string }) => (
+    <div className={`relative flex items-center justify-center group shrink-0 cursor-pointer ${containerClass}`} title={noTooltip ? "" : "Official Verified Creator"}>
+        {/* 🔥 Soft Animated Glow */}
+        <div className="absolute inset-0 bg-orange-500 rounded-full blur-[6px] opacity-40 animate-pulse pointer-events-none"></div>
+        {/* ✨ Floating Light Ring */}
+        <div className="absolute inset-0 rounded-full border border-orange-300/30 scale-110 animate-ping pointer-events-none"></div>
+        {/* ✅ Exact Instagram-Type Rosette Badge */}
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={`${sizeClass} relative z-10 drop-shadow-[0_4px_12px_rgba(249,115,22,0.55)] transition-all duration-300 group-hover:scale-110`}>
+            <defs>
+                <linearGradient id="zestly-premium-badge" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#fde68a" />
+                    <stop offset="35%" stopColor="#f59e0b" />
+                    <stop offset="70%" stopColor="#f97316" />
+                    <stop offset="100%" stopColor="#ea580c" />
+                </linearGradient>
+            </defs>
+            <path fill="url(#zestly-premium-badge)" d="M12 0.8L14.6 2.1L17.5 1.4L18.8 4L21.4 5.2L20.7 8.1L23.2 10.5L20.7 12.9L21.4 15.8L18.8 17L17.5 19.6L14.6 18.9L12 21.2L9.4 18.9L6.5 19.6L5.2 17L2.6 15.8L3.3 12.9L0.8 10.5L3.3 8.1L2.6 5.2L5.2 4L6.5 1.4L9.4 2.1Z"/>
+            <path fill="rgba(255,255,255,0.22)" d="M12 2.2C15.5 2.2 18 4.2 19.2 7.2C17.2 5.7 14.8 4.8 12 4.8C9.2 4.8 6.8 5.7 4.8 7.2C6 4.2 8.5 2.2 12 2.2Z"/>
+            <path fill="#fff" d="M10.2 15.7L6.9 12.4L8.4 10.9L10.2 12.7L15.8 7.1L17.3 8.6L10.2 15.7Z"/>
+        </svg>
+        {!noTooltip && (
+            <div className="absolute bottom-full mb-2.5 whitespace-nowrap bg-orange-600 text-white text-[10px] font-black px-2.5 py-1 rounded-full opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0 transition-all shadow-xl pointer-events-none border border-orange-400 z-50">
+                OFFICIAL CREATOR 🏆
+                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-orange-600"></div>
+            </div>
+        )}
+    </div>
+);
 
 // ─── COMPONENT ────────────────────────────────────────────
 export default function HomeTab({ user }: HomeTabProps) {
@@ -269,6 +299,7 @@ export default function HomeTab({ user }: HomeTabProps) {
         authorName: item.author_name || "Chef Zestly", 
         authorId: item.author_id || item.user_id,
         authorAvatar: authorProfile?.avatar_url || null, 
+        authorIsVerified: authorProfile?.is_verified || false, 
         realLikesCount: realLikes,
         realViewsCount: realViews,
         likesCount: displayLikes,
@@ -285,22 +316,24 @@ export default function HomeTab({ user }: HomeTabProps) {
     });
   };
 
-  // 🚀 INITIAL FETCH (PAGE 0)
+  // 🚀 INITIAL FETCH
   const fetchInitialFeedAndChefs = async () => {
     setIsLoading(true);
     const { data: settingsData } = await supabase.from("app_settings").select("fake_engagement_enabled").eq("id", 1).single();
     const isFakeOn = settingsData ? settingsData.fake_engagement_enabled : false;
     setFakeMode(isFakeOn);
 
-    const { data: profilesData } = await supabase.from("profiles").select("*").limit(10);
+    const { data: profilesData } = await supabase.from("profiles").select("*").order("bonus_followers", { ascending: false }).limit(10);
+    
     if (profilesData && profilesData.length > 0) {
       const formattedChefs = profilesData.map(p => ({
           ...p,
-          followers: isFakeOn ? (p.followers_count || 0) + (p.bonus_followers || 0) + 1200 : (p.followers_count || 0)
+          followers: isFakeOn ? (p.followers_count || 0) + (p.bonus_followers || 0) + 1200 : (p.followers_count || 0),
+          is_verified: p.is_verified || false
       })).sort((a, b) => b.followers - a.followers);
       setTrendingChefs(formattedChefs);
     } else {
-      setTrendingChefs([{ id: "mock1", full_name: "Chef Zestly", followers: 12500 }]);
+      setTrendingChefs([{ id: "mock1", full_name: "Chef Zestly", followers: 12500, is_verified: true }]);
     }
 
     const { data: recipesData } = await supabase
@@ -335,7 +368,6 @@ export default function HomeTab({ user }: HomeTabProps) {
     if (recipesData && recipesData.length > 0) {
       const formatted = await formatRecipesData(recipesData, page * POSTS_PER_PAGE, fakeMode);
       
-      // 🚀 FIXED: Prevent duplicate keys by filtering out posts we already have
       setPosts(prev => {
         const existingIds = new Set(prev.map(p => p.id));
         const newUniquePosts = formatted.filter(p => !existingIds.has(p.id));
@@ -408,7 +440,8 @@ export default function HomeTab({ user }: HomeTabProps) {
       avatar_url: profileData?.avatar_url || null,
       followersCount: finalFollowers,
       followingCount: followingCount || 0,
-      postsCount: formattedChefPosts.length
+      postsCount: formattedChefPosts.length,
+      is_verified: profileData?.is_verified || false 
     });
   };
 
@@ -624,19 +657,24 @@ export default function HomeTab({ user }: HomeTabProps) {
           <div className="flex gap-4 overflow-x-auto py-3 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             {trendingChefs.map((chef, i, arr) => (
               <div key={i} onClick={() => openChefProfile(chef.id, chef.full_name)} className={`flex flex-col items-center shrink-0 snap-start cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${i === 0 ? "ml-5 sm:ml-1" : ""} ${i === arr.length - 1 ? "mr-5 sm:mr-1" : ""}`}>
-                <div className="relative w-16 h-16 sm:w-[76px] sm:h-[76px] rounded-full p-[3px] bg-gradient-to-tr from-orange-500 via-red-500 to-purple-500 group-hover:scale-105 group-active:scale-95 transition-all duration-300 shadow-md mb-2">
-                  <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white border-[3px] border-white dark:border-[#07070a] transition-colors overflow-hidden">
-                    {chef.avatar_url ? (
-                      <img src={chef.avatar_url} className="w-full h-full object-cover" alt={chef.full_name} />
-                    ) : (
-                      chef.full_name.charAt(0).toUpperCase()
-                    )}
+                <div className="relative w-16 h-16 sm:w-[76px] sm:h-[76px] shrink-0">
+                  <div className="w-full h-full rounded-full bg-gradient-to-tr from-orange-500 via-red-500 to-purple-500 p-[3px] group-hover:scale-105 group-active:scale-95 transition-all duration-300 shadow-md">
+                    <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white border-[3px] border-white dark:border-[#07070a] transition-colors overflow-hidden">
+                      {chef.avatar_url ? (
+                        <img src={chef.avatar_url} className="w-full h-full object-cover" alt={chef.full_name} />
+                      ) : (
+                        chef.full_name.charAt(0).toUpperCase()
+                      )}
+                    </div>
                   </div>
-                  <div className="absolute bottom-0 right-0 bg-orange-500 w-4 h-4 sm:w-5 sm:h-5 rounded-full border-2 border-white dark:border-[#07070a] flex items-center justify-center">
-                    <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" fill="none" stroke="currentColor" strokeWidth="4" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
-                  </div>
+                  {/* 🚀 BADGE INTEGRATION IN TRENDING LIST ON DP */}
+                  {chef.is_verified && (
+                      <div className="absolute bottom-0 right-0 z-20">
+                          <VerifiedBadge sizeClass="w-[18px] h-[18px] sm:w-[22px] sm:h-[22px]" noTooltip={true} />
+                      </div>
+                  )}
                 </div>
-                <span className="text-[11px] sm:text-sm font-bold text-slate-900 dark:text-white transition-colors">{chef.full_name.split(" ")[0]}</span>
+                <span className="text-[11px] sm:text-sm font-bold text-slate-900 dark:text-white transition-colors truncate max-w-[70px] mt-2">{chef.full_name.split(" ")[0]}</span>
               </div>
             ))}
           </div>
@@ -669,11 +707,21 @@ export default function HomeTab({ user }: HomeTabProps) {
               <div className="flex flex-col gap-4 mt-4">
                 {searchedChefs.map((chef, i) => (
                   <div key={i} onClick={() => openChefProfile(chef.id, chef.full_name)} className="flex items-center gap-4 bg-white dark:bg-[#1c1c1e] p-4 rounded-[1.5rem] border border-slate-200 dark:border-white/5 cursor-pointer shadow-sm active:scale-95 transition-all">
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-xl font-bold overflow-hidden">
-                      {chef.avatar_url ? <img src={chef.avatar_url} className="w-full h-full object-cover" /> : chef.full_name.charAt(0).toUpperCase()}
+                    <div className="relative shrink-0 w-14 h-14">
+                      <div className="w-full h-full rounded-full bg-gradient-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-xl font-bold overflow-hidden">
+                        {chef.avatar_url ? <img src={chef.avatar_url} className="w-full h-full object-cover" /> : chef.full_name.charAt(0).toUpperCase()}
+                      </div>
+                      {/* 🚀 BADGE INTEGRATION ON DP IN SEARCH */}
+                      {chef.is_verified && (
+                          <div className="absolute bottom-0 right-0 z-20">
+                              <VerifiedBadge sizeClass="w-[18px] h-[18px]" noTooltip={true}/>
+                          </div>
+                      )}
                     </div>
                     <div>
-                      <h4 className="font-extrabold text-slate-900 dark:text-white text-base">{chef.full_name}</h4>
+                      <div className="font-extrabold text-slate-900 dark:text-white text-base">
+                          {chef.full_name}
+                      </div>
                       <p className="text-xs text-slate-500 font-medium">@{chef.username || `zestly_${chef.id.substring(0, 4)}`} • View Profile</p>
                     </div>
                   </div>
@@ -704,11 +752,21 @@ export default function HomeTab({ user }: HomeTabProps) {
                       <div className="flex flex-col gap-3">
                         {searchedChefs.slice(0, 3).map((chef, i) => (
                           <div key={i} onClick={() => openChefProfile(chef.id, chef.full_name)} className="flex items-center gap-4 bg-white dark:bg-[#1c1c1e] p-3 rounded-[1.2rem] border border-slate-200 dark:border-white/5 cursor-pointer shadow-sm active:scale-95 transition-all">
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-lg font-bold overflow-hidden">
-                              {chef.avatar_url ? <img src={chef.avatar_url} className="w-full h-full object-cover" /> : chef.full_name.charAt(0).toUpperCase()}
+                            <div className="relative shrink-0 w-12 h-12">
+                              <div className="w-full h-full rounded-full bg-gradient-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-lg font-bold overflow-hidden">
+                                {chef.avatar_url ? <img src={chef.avatar_url} className="w-full h-full object-cover" /> : chef.full_name.charAt(0).toUpperCase()}
+                              </div>
+                              {/* 🚀 BADGE INTEGRATION ON DP IN TOP CHEFS SEARCH */}
+                              {chef.is_verified && (
+                                  <div className="absolute bottom-0 right-0 z-20">
+                                      <VerifiedBadge sizeClass="w-[16px] h-[16px]" noTooltip={true}/>
+                                  </div>
+                              )}
                             </div>
                             <div>
-                              <h4 className="font-extrabold text-slate-900 dark:text-white text-sm">{chef.full_name}</h4>
+                              <div className="font-extrabold text-slate-900 dark:text-white text-sm">
+                                  {chef.full_name}
+                              </div>
                               <p className="text-xs text-slate-500 font-medium">@{chef.username || `zestly_${chef.id.substring(0, 4)}`}</p>
                             </div>
                           </div>
@@ -799,13 +857,23 @@ export default function HomeTab({ user }: HomeTabProps) {
                       {/* Author Header */}
                       <div className="py-3 px-4 sm:p-5 flex justify-between items-center bg-transparent border-b border-slate-100 dark:border-white/5 z-10">
                         <div onClick={() => openChefProfile(post.authorId || "mock", post.authorName)} className="flex items-center gap-3 cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-orange-500 to-red-500 p-[2px] shadow">
-                            <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-xs font-black text-slate-900 dark:text-white uppercase transition-colors overflow-hidden">
-                              {post.authorAvatar ? <img src={post.authorAvatar} className="w-full h-full object-cover" /> : post.authorName.charAt(0).toUpperCase()}
+                          <div className="relative shrink-0 w-9 h-9">
+                            <div className="w-full h-full rounded-full bg-gradient-to-tr from-orange-500 to-red-500 p-[2px] shadow">
+                              <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-xs font-black text-slate-900 dark:text-white uppercase transition-colors overflow-hidden">
+                                {post.authorAvatar ? <img src={post.authorAvatar} className="w-full h-full object-cover" /> : post.authorName.charAt(0).toUpperCase()}
+                              </div>
                             </div>
+                            {/* 🚀 BADGE INTEGRATION IN FEED HEADER DP */}
+                            {post.authorIsVerified && (
+                                <div className="absolute bottom-0 right-0 z-20">
+                                    <VerifiedBadge sizeClass="w-[14px] h-[14px]" noTooltip={true}/>
+                                </div>
+                            )}
                           </div>
                           <div className="flex flex-col">
-                            <p className="text-sm text-slate-900 dark:text-white font-bold transition-colors leading-tight group-hover:underline">{post.authorName}</p>
+                            <div className="text-sm text-slate-900 dark:text-white font-bold transition-colors leading-tight group-hover:underline flex items-center gap-1.5">
+                                {post.authorName}
+                            </div>
                             <p className="text-[10px] text-slate-500 font-medium">Zestly Chef</p>
                           </div>
                         </div>
@@ -851,7 +919,12 @@ export default function HomeTab({ user }: HomeTabProps) {
                               <span className="text-slate-300 dark:text-slate-700">•</span>
                               <p className="font-bold text-sm text-slate-500 flex items-center gap-1"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg> {formatNum(post.viewsCount)}</p>
                           </div>
-                          <p className="text-sm text-slate-900 dark:text-white leading-relaxed line-clamp-2"><strong className="mr-1.5 font-bold cursor-pointer hover:underline" onClick={() => openChefProfile(post.authorId || "mock", post.authorName)}>{post.authorName}</strong> {post.name} - The ultimate {post.type} treat! 🥘✨</p>
+                          <div className="text-sm text-slate-900 dark:text-white leading-relaxed line-clamp-2">
+                              <strong className="mr-1.5 font-bold cursor-pointer hover:underline inline-flex items-center gap-1" onClick={() => openChefProfile(post.authorId || "mock", post.authorName)}>
+                                  {post.authorName}
+                              </strong> 
+                              {post.name} - The ultimate {post.type} treat! 🥘✨
+                          </div>
                           
                           {post.commentsCount > 0 && (
                             <p onClick={() => openComments(post)} className="text-[13px] text-slate-500 mt-1.5 cursor-pointer font-medium hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
@@ -892,10 +965,18 @@ export default function HomeTab({ user }: HomeTabProps) {
             
             <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               <div className="px-6 py-8 flex flex-col sm:flex-row items-start sm:items-center gap-6 sm:gap-10">
-                <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-gradient-to-tr from-orange-500 to-red-500 p-1 shrink-0">
-                  <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-4xl sm:text-5xl font-black text-slate-900 dark:text-white uppercase overflow-hidden">
-                    {viewingChef.avatar_url ? <img src={viewingChef.avatar_url} className="w-full h-full object-cover" /> : viewingChef.full_name.charAt(0).toUpperCase()}
+                <div className="relative w-24 h-24 sm:w-32 sm:h-32 shrink-0">
+                  <div className="w-full h-full rounded-full bg-gradient-to-tr from-orange-500 to-red-500 p-1">
+                    <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-4xl sm:text-5xl font-black text-slate-900 dark:text-white uppercase overflow-hidden">
+                      {viewingChef.avatar_url ? <img src={viewingChef.avatar_url} className="w-full h-full object-cover" /> : viewingChef.full_name.charAt(0).toUpperCase()}
+                    </div>
                   </div>
+                  {/* 🚀 BADGE INTEGRATION IN PROFILE MODAL ON DP */}
+                  {viewingChef.is_verified && (
+                      <div className="absolute bottom-0 right-0 sm:bottom-1 sm:right-1 z-20">
+                          <VerifiedBadge sizeClass="w-[24px] h-[24px] sm:w-[32px] sm:h-[32px]" noTooltip={true} />
+                      </div>
+                  )}
                 </div>
                 
                 <div className="flex-1 w-full">
@@ -906,8 +987,10 @@ export default function HomeTab({ user }: HomeTabProps) {
                   </div>
 
                   <div className="mb-5">
-                    <h4 className="font-extrabold text-slate-900 dark:text-white text-base">{viewingChef.full_name}</h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium whitespace-pre-wrap leading-relaxed">{viewingChef.bio}</p>
+                    <div className="font-extrabold text-slate-900 dark:text-white text-base flex items-center gap-2 justify-center sm:justify-start">
+                        {viewingChef.full_name}
+                    </div>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium whitespace-pre-wrap leading-relaxed mt-1">{viewingChef.bio}</p>
                   </div>
 
                   {viewingChef.id !== user?.id && (
