@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase"; 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 
 export default function SignupPage() {
   const [name, setName] = useState("");
@@ -12,7 +13,16 @@ export default function SignupPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  
+  // 🚀 Added Animation States
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
   const router = useRouter();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,7 +39,7 @@ export default function SignupPage() {
       return;
     }
 
-    // 2. 🚀 LIVE UNIQUE CHECK: Check if username already exists in DB
+    // 2. LIVE UNIQUE CHECK: Check if username already exists in DB
     const { data: existingUser } = await supabase
       .from("profiles")
       .select("username")
@@ -56,11 +66,14 @@ export default function SignupPage() {
 
     if (error) {
       setErrorMsg(error.message);
+      setLoading(false);
     } else {
-      setSuccessMsg("Welcome to Zestly! Redirecting to your kitchen...");
-      setTimeout(() => router.push("/"), 2000);
+      // 🚀 Trigger Full-Screen Premium Animation
+      setIsRedirecting(true);
+      setTimeout(() => {
+        router.push("/");
+      }, 1500);
     }
-    setLoading(false);
   };
 
   const handleGoogleLogin = async () => {
@@ -155,7 +168,7 @@ export default function SignupPage() {
             type="button"
             onClick={handleGoogleLogin}
             disabled={loading}
-            className="w-full bg-white hover:bg-slate-100 text-slate-900 font-extrabold py-3.5 rounded-2xl transition-all active:scale-[0.98] mb-6 flex justify-center items-center gap-3 disabled:opacity-70 outline-none [-webkit-tap-highlight-color:transparent] shadow-md"
+            className="w-full bg-white hover:bg-slate-100 text-slate-900 font-extrabold py-3.5 rounded-2xl transition-all active:scale-[0.98] mb-6 flex justify-center items-center gap-3 disabled:opacity-70 outline-none [-webkit-tap-highlight-color:transparent] shadow-md cursor-pointer"
           >
             {loading ? (
               <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
@@ -242,7 +255,7 @@ export default function SignupPage() {
 
             <button 
               type="submit" disabled={loading}
-              className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-black py-4 rounded-2xl shadow-[0_8px_20px_rgba(249,115,22,0.25)] hover:scale-[1.02] active:scale-[0.98] transition-all mt-4 flex justify-center items-center gap-2 outline-none [-webkit-tap-highlight-color:transparent]"
+              className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-black py-4 rounded-2xl shadow-[0_8px_20px_rgba(249,115,22,0.25)] hover:scale-[1.02] active:scale-[0.98] transition-all mt-4 flex justify-center items-center gap-2 outline-none [-webkit-tap-highlight-color:transparent] cursor-pointer"
             >
               {loading ? <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Setting up...</> : "Create Account"}
             </button>
@@ -257,6 +270,34 @@ export default function SignupPage() {
 
         </div>
       </div>
+
+      {/* 🚀 ULTIMATE FULL-SCREEN REDIRECT ANIMATION MODAL */}
+      {mounted && isRedirecting && createPortal(
+        <div className="fixed inset-0 z-[100000] bg-[#07070a] flex flex-col items-center justify-center overflow-hidden animate-in fade-in duration-300">
+          
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40rem] h-[40rem] bg-orange-600/30 rounded-full blur-[150px] animate-pulse"></div>
+          
+          <div className="relative z-10 flex flex-col items-center animate-in zoom-in duration-500">
+            <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-3xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-5xl sm:text-7xl font-black text-white shadow-[0_0_80px_rgba(249,115,22,0.8)] animate-pulse mb-8">
+              Z
+            </div>
+            
+            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight mb-3">
+              Account Created Successfully
+            </h2>
+            <div className="flex items-center gap-3">
+              <div className="w-5 h-5 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-slate-400 font-bold tracking-widest uppercase text-xs sm:text-sm">
+                Preparing your kitchen... 👨‍🍳
+              </p>
+            </div>
+          </div>
+
+          <div className="absolute inset-0 bg-orange-500/10 mix-blend-overlay animate-pulse"></div>
+        </div>,
+        document.body
+      )}
+
     </div>
   );
 }
