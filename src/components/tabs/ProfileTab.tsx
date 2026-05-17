@@ -62,7 +62,6 @@ export default function ProfileTab({ user }: { user: any }) {
   const [isTyping, setIsTyping] = useState(false);
   const [aiMessage, setAiMessage] = useState(`Hi Chef! What are we cooking today?`);
   const [isExporting, setIsExporting] = useState(false);
-  const [exportSuccess, setExportSuccess] = useState(false);
 
   const showToast = (msg: string) => {
     setToast({ isOpen: true, message: msg });
@@ -152,7 +151,13 @@ export default function ProfileTab({ user }: { user: any }) {
     
     const realFollowers = followersCount || 0;
     const bonusFollowers = profileData?.bonus_followers || 0;
-    const finalFollowers = isFakeOn ? realFollowers + bonusFollowers : realFollowers;
+    
+    let baseFake = 0;
+    if (isFakeOn && user.id) {
+        baseFake = (user.id.charCodeAt(0) * 25) + (user.id.charCodeAt(1) * 10);
+    }
+
+    const finalFollowers = isFakeOn ? realFollowers + bonusFollowers + baseFake : realFollowers;
 
     setStats({ 
         posts: recipes?.length || 0, 
@@ -160,14 +165,26 @@ export default function ProfileTab({ user }: { user: any }) {
         following: followingCount || 0 
     });
 
-    // 🚀 CALCULATE ANALYTICS 
     setAnalytics({
         totalViews: tViews,
         totalLikes: tLikes,
-        reach: Math.floor(tViews * 1.4 + finalFollowers * 0.5) // A smart realistic metric
+        reach: Math.floor(tViews * 1.4 + finalFollowers * 0.5) 
     });
     
     setIsLoading(false);
+  };
+
+  const requestVerification = async () => {
+      setIsSaving(true);
+      showToast("Submitting request... ⏳");
+      try {
+          await supabase.from("profiles").update({ verification_status: 'pending' }).eq("id", user.id);
+          setProfile((prev: any) => ({ ...prev, verification_status: 'pending' }));
+          showToast("Verification request sent! 🚀");
+      } catch(e) {
+          showToast("Failed to send request.");
+      }
+      setIsSaving(false);
   };
 
   const openCookMode = (post: any) => {
@@ -302,11 +319,8 @@ export default function ProfileTab({ user }: { user: any }) {
 
   const handleExportData = () => {
     setIsExporting(true);
-    setExportSuccess(false);
     setTimeout(() => {
       setIsExporting(false);
-      setExportSuccess(true);
-      setTimeout(() => setExportSuccess(false), 3000);
     }, 2000);
   };
 
@@ -362,8 +376,69 @@ export default function ProfileTab({ user }: { user: any }) {
           </div>
           
           <div className="flex-1 w-full text-center sm:text-left mt-2 sm:mt-6 z-10 relative">
-            <h1 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">{profile?.full_name || "Head Chef"}</h1>
-            <p className={`${activeTheme.text} text-xs sm:text-sm font-bold mb-3 uppercase tracking-wider`}>Culinary Artist</p>
+            
+            {/* 🚀 PREMIUM VERIFIED BADGE — INSTAGRAM STYLE BUT PERFECT */}
+            <h1 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight flex items-center justify-center sm:justify-start gap-2">
+                <span className="truncate max-w-[80%]">
+                    {profile?.full_name || "Head Chef"}
+                </span>
+
+                {profile?.is_verified && (
+                    <div
+                        className="relative flex items-center justify-center group shrink-0 ml-1 cursor-pointer"
+                        title="Official Verified Creator"
+                    >
+                        {/* 🔥 Soft Animated Glow */}
+                        <div className="absolute inset-0 bg-orange-500 rounded-full blur-[8px] opacity-40 animate-pulse pointer-events-none"></div>
+
+                        {/* ✨ Floating Light Ring */}
+                        <div className="absolute inset-0 rounded-full border border-orange-300/30 scale-110 animate-ping pointer-events-none"></div>
+
+                        {/* ✅ Exact Instagram-Type Rosette Badge */}
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            className="w-7 h-7 sm:w-8 sm:h-8 relative z-10 drop-shadow-[0_4px_12px_rgba(249,115,22,0.55)] transition-all duration-300 group-hover:scale-110"
+                        >
+                            <defs>
+                                <linearGradient id="zestly-premium" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stopColor="#fde68a" /> {/* amber-200 */}
+                                    <stop offset="35%" stopColor="#f59e0b" /> {/* amber-500 */}
+                                    <stop offset="70%" stopColor="#f97316" /> {/* orange-500 */}
+                                    <stop offset="100%" stopColor="#ea580c" /> {/* orange-600 */}
+                                </linearGradient>
+                            </defs>
+
+                            {/* 🌟 PERFECT CUT-EDGE SHAPE */}
+                            <path
+                                fill="url(#zestly-premium)"
+                                d="M12 0.8 L14.6 2.1 L17.5 1.4 L18.8 4 L21.4 5.2 L20.7 8.1 L23.2 10.5 L20.7 12.9 L21.4 15.8 L18.8 17 L17.5 19.6 L14.6 18.9 L12 21.2 L9.4 18.9 L6.5 19.6 L5.2 17 L2.6 15.8 L3.3 12.9 L0.8 10.5 L3.3 8.1 L2.6 5.2 L5.2 4 L6.5 1.4 L9.4 2.1 Z"
+                            />
+
+                            {/* ✨ Gloss Highlight */}
+                            <path
+                                fill="rgba(255,255,255,0.22)"
+                                d="M12 2.2C15.5 2.2 18 4.2 19.2 7.2C17.2 5.7 14.8 4.8 12 4.8C9.2 4.8 6.8 5.7 4.8 7.2C6 4.2 8.5 2.2 12 2.2Z"
+                            />
+
+                            {/* ✔ Crisp White Check */}
+                            <path
+                                fill="#fff"
+                                d="M10.2 15.7L6.9 12.4L8.4 10.9L10.2 12.7L15.8 7.1L17.3 8.6L10.2 15.7Z"
+                            />
+                        </svg>
+
+                        {/* 🏆 Tooltip */}
+                        <div className="absolute bottom-full mb-2.5 whitespace-nowrap bg-orange-600 text-white text-[10px] font-black px-2.5 py-1 rounded-full opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0 transition-all shadow-xl pointer-events-none border border-orange-400 z-50">
+                            OFFICIAL CREATOR 🏆
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-orange-600"></div>
+                        </div>
+
+                    </div>
+                )}
+            </h1>
+
+            <p className={`${activeTheme.text} text-xs sm:text-sm font-bold mb-3 uppercase tracking-wider mt-1`}>Culinary Artist</p>
             <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 font-medium whitespace-pre-wrap leading-relaxed max-w-lg mx-auto sm:mx-0">
               {profile?.bio || "Passionate Chef at Zestly 🍳\nTurning raw ingredients into pure magic!"}
             </p>
@@ -381,7 +456,6 @@ export default function ProfileTab({ user }: { user: any }) {
           <div className="flex flex-col items-center flex-1"><span className="text-2xl font-black text-slate-900 dark:text-white">{formatNum(stats.following)}</span><span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest mt-0.5">Following</span></div>
         </div>
 
-        {/* 🚀 ACTION BUTTONS WITH ANALYTICS */}
         <div className="flex flex-col gap-3 mt-6">
           <div className="flex gap-4">
               <button onClick={() => setIsEditOpen(true)} className={`flex-1 bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white font-extrabold py-3.5 rounded-2xl text-sm sm:text-base transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shadow-md hover:shadow-lg`}>Edit Profile</button>
@@ -590,6 +664,28 @@ export default function ProfileTab({ user }: { user: any }) {
             <h3 className="font-black text-slate-900 dark:text-white text-2xl tracking-tight">Settings & Privacy</h3>
           </div>
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] max-w-4xl mx-auto w-full">
+            
+            {/* 🚀 VERIFICATION REQUEST SECTION IN SETTINGS (ORANGE/GOLD THEME) */}
+            <div className="bg-white dark:bg-[#121216] rounded-[2rem] p-6 shadow-[0_8px_30px_#0000000a] dark:shadow-none border border-orange-500/20 relative overflow-hidden group">
+                <div className={`absolute top-0 right-0 w-32 h-32 bg-orange-500 opacity-10 rounded-bl-[100px] pointer-events-none transition-all group-hover:scale-110`}></div>
+                <h4 className="text-xs font-black text-orange-500 uppercase tracking-widest mb-6">Account Verification</h4>
+                <div className="flex justify-between items-center relative z-10">
+                    <div>
+                        <span className="font-bold text-slate-900 dark:text-white text-base block mb-1">Master Chef Badge</span>
+                        <span className="text-xs text-slate-500 font-medium">Get the coveted Gold Tick</span>
+                    </div>
+                    {profile?.is_verified ? (
+                        <span className="text-orange-500 bg-orange-500/10 px-4 py-2 rounded-xl text-xs font-bold border border-orange-500/20 flex items-center gap-1 shadow-sm">
+                            <span className="text-sm">🏆</span> Verified
+                        </span>
+                    ) : profile?.verification_status === 'pending' ? (
+                        <span className="text-orange-400 bg-orange-500/10 px-4 py-2 rounded-xl text-xs font-bold border border-orange-500/20">Pending ⏳</span>
+                    ) : (
+                        <button onClick={requestVerification} disabled={isSaving} className="bg-gradient-to-r from-orange-400 to-red-500 hover:from-orange-500 hover:to-red-600 px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-colors cursor-pointer active:scale-95 outline-none shadow-md">Apply Now</button>
+                    )}
+                </div>
+            </div>
+
             <div className="bg-white dark:bg-[#121216] rounded-[2rem] p-6 shadow-[0_8px_30px_#0000000a] dark:shadow-none border border-slate-100 dark:border-white/5">
               <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Visual & App Preferences</h4>
               <div className="flex justify-between items-center mb-6">

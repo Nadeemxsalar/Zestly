@@ -20,10 +20,13 @@ interface UserRow {
   username: string;
   email: string;
   bio: string;
+  avatar_url: string | null;
   recipes_count: number;
-  followers_count: number; // Real + Bonus (if fake mode ON)
+  followers_count: number; // Real + Bonus + Dynamic Fake
   real_followers: number;  // Only real
   bonus_followers: number; // Fake added by admin
+  is_verified: boolean;
+  verification_status: string;
   following_count: number;
   joined: string;
   is_banned: boolean;
@@ -107,7 +110,7 @@ export default function ZestlyAdminPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [bannedIds, setBannedIds] = useState<Set<string>>(new Set());
 
-  // 🚀 NEW: God Mode / Algorithm States
+  // 🚀 God Mode / Algorithm States
   const [fakeMode, setFakeMode] = useState(true);
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [editFormData, setEditFormData] = useState({ full_name: "", username: "", bio: "" });
@@ -138,7 +141,7 @@ export default function ZestlyAdminPage() {
         { data: recipesData },
         { data: notifsData },
         { count: vegCount },
-        { data: settingsData }, // Fetch Global Algorithm settings
+        { data: settingsData }, 
       ] = await Promise.all([
         supabase.from("profiles").select("*", { count: "exact", head: true }),
         supabase.from("recipes").select("*", { count: "exact", head: true }),
@@ -147,15 +150,14 @@ export default function ZestlyAdminPage() {
         supabase.from("pantry").select("*", { count: "exact", head: true }),
         supabase.from("profiles").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
         supabase.from("recipes").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
-        supabase.from("profiles").select("id, full_name, username, bio, created_at, bonus_followers").order("created_at", { ascending: false }).limit(50),
-        supabase.from("recipes").select("*").order("created_at", { ascending: false }).limit(50),
+        supabase.from("profiles").select("id, full_name, username, bio, created_at, bonus_followers, is_verified, verification_status, avatar_url").order("created_at", { ascending: false }).limit(500), // Increased limit for better searching
+        supabase.from("recipes").select("*").order("created_at", { ascending: false }).limit(200), // Increased limit
         supabase.from("notifications").select("id, type, created_at").order("created_at", { ascending: false }).limit(30),
         supabase.from("recipes").select("*", { count: "exact", head: true }).eq("type", "Veg"),
         supabase.from("app_settings").select("fake_engagement_enabled").eq("id", 1).single(),
       ]);
 
       if (settingsData) setFakeMode(settingsData.fake_engagement_enabled);
-
       const isFakeOn = settingsData ? settingsData.fake_engagement_enabled : true;
 
       // Build user rows with recipe + follow counts
@@ -170,16 +172,27 @@ export default function ZestlyAdminPage() {
           const realFollowers = fc || 0;
           const bonusFollowers = p.bonus_followers || 0;
 
+          // 🚀 UNIQUE FAKE BASE ALGORITHM
+          let baseFake = 0;
+          if (isFakeOn && p.id) {
+              const char1 = p.id.charCodeAt(0) || 10;
+              const char2 = p.id.charCodeAt(1) || 10;
+              baseFake = (char1 * 25) + (char2 * 10);
+          }
+
           return {
             id: p.id,
             full_name: p.full_name || "Unknown Chef",
             username: p.username || "unknown",
             email: "",
             bio: p.bio || "",
+            avatar_url: p.avatar_url,
             recipes_count: rc || 0,
             real_followers: realFollowers,
             bonus_followers: bonusFollowers,
-            followers_count: isFakeOn ? realFollowers + bonusFollowers : realFollowers,
+            followers_count: isFakeOn ? realFollowers + bonusFollowers + baseFake : realFollowers,
+            is_verified: p.is_verified || false,
+            verification_status: p.verification_status || 'none',
             following_count: fgc || 0,
             joined: p.created_at,
             is_banned: false,
@@ -298,6 +311,7 @@ export default function ZestlyAdminPage() {
       },
       ...prev,
     ]);
+    showToast(`User status updated!`);
   };
 
   const deleteRecipe = async (id: string) => {
@@ -317,30 +331,46 @@ export default function ZestlyAdminPage() {
       setFakeMode(newMode);
       await supabase.from("app_settings").update({ fake_engagement_enabled: newMode }).eq("id", 1);
       
-      // Update local followers calculation instantly
-      setUsers(users.map(u => ({
-          ...u,
-          followers_count: newMode ? u.real_followers + u.bonus_followers : u.real_followers
-      })));
-      
+      // Update logic locally
+      setUsers(users.map(u => {
+          let baseFake = 0;
+          if (newMode) baseFake = (u.id.charCodeAt(0) * 25) + (u.id.charCodeAt(1) * 10);
+          return { ...u, followers_count: newMode ? u.real_followers + u.bonus_followers + baseFake : u.real_followers };
+      }));
       showToast(newMode ? "🚀 Growth Algorithm Activated!" : "🛑 Engine Switched to Real Mode!");
   };
 
-  const updateBonusFollowers = async (userId: string, delta: number) => {
+  const handleBonusFollowersChange = async (userId: string, newBonusStr: string) => {
+      const newBonus = parseInt(newBonusStr) || 0;
       const user = users.find(u => u.id === userId);
       if (!user) return;
       
-      const newBonus = Math.max(0, user.bonus_followers + delta); // Cant go below 0 bonus
-      
-      // Optimistic Update
+      let baseFake = 0;
+      if (fakeMode) baseFake = (user.id.charCodeAt(0) * 25) + (user.id.charCodeAt(1) * 10);
+
       setUsers(users.map(u => u.id === userId ? {
           ...u, 
           bonus_followers: newBonus,
-          followers_count: fakeMode ? u.real_followers + newBonus : u.real_followers
+          followers_count: fakeMode ? u.real_followers + newBonus + baseFake : u.real_followers
       } : u));
 
       await supabase.from("profiles").update({ bonus_followers: newBonus }).eq("id", userId);
-      showToast(`Bonus followers updated for ${user.username} ✨`);
+  };
+
+  const toggleVerify = async (userId: string, currentVerified: boolean) => {
+      const newStatus = !currentVerified;
+      const dbStatusStr = newStatus ? 'approved' : 'none';
+
+      setUsers(users.map(u => u.id === userId ? { ...u, is_verified: newStatus, verification_status: dbStatusStr } : u));
+      await supabase.from("profiles").update({ is_verified: newStatus, verification_status: dbStatusStr }).eq("id", userId);
+      showToast(newStatus ? "Blue Tick Granted! ✅" : "Blue Tick Removed! ❌");
+  };
+
+  const removeAvatar = async (userId: string) => {
+      if(!confirm("Are you sure you want to delete this user's Profile Picture?")) return;
+      setUsers(users.map(u => u.id === userId ? { ...u, avatar_url: null } : u));
+      await supabase.from("profiles").update({ avatar_url: null }).eq("id", userId);
+      showToast("Profile Picture removed! 🗑️", "danger");
   };
 
   const handleEditUserClick = (u: UserRow) => {
@@ -371,16 +401,22 @@ export default function ZestlyAdminPage() {
       showToast("User permanently deleted from database 🗑️", "danger");
   };
 
-
-  // ── Filtered Lists ─────────────────────────────────────
+  // ── Filtered Lists & ANTI-HANG LOGIC ─────────────────────────────────────
   const filteredUsers = users.filter(
     (u) =>
       u.full_name.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.username.toLowerCase().includes(userSearch.toLowerCase())
   );
+  
+  // 🚀 ANTI-HANG: Only map the first 50 results to prevent DOM overload when searching
+  const displayUsers = filteredUsers.slice(0, 50);
+
+  const pendingRequests = users.filter(u => u.verification_status === 'pending');
+
   const filteredRecipes = recipes.filter((r) =>
     r.name.toLowerCase().includes(recipeSearch.toLowerCase())
   );
+  const displayRecipes = filteredRecipes.slice(0, 50);
 
   const graphMax = Math.max(...graphData, 1);
   const dayLabels = ["6d", "5d", "4d", "3d", "2d", "1d", "Today"];
@@ -410,7 +446,7 @@ export default function ZestlyAdminPage() {
     { id: "overview", label: "Overview", icon: "📊" },
     { id: "users", label: "Users", icon: "👥" },
     { id: "recipes", label: "Recipes", icon: "🍲" },
-    { id: "algorithm", label: "Algorithm", icon: "🚀" }, // 🚀 NEW TAB
+    { id: "algorithm", label: "Algorithm", icon: "🚀" }, 
     { id: "logs", label: "Activity", icon: "📋" },
   ] as const;
 
@@ -473,8 +509,10 @@ export default function ZestlyAdminPage() {
                     {metrics.totalRecipes}
                   </span>
                 )}
-                {item.id === "algorithm" && fakeMode && (
-                  <span className="ml-auto w-2 h-2 bg-green-400 rounded-full shadow-[0_0_8px_#4ade80]" />
+                {item.id === "algorithm" && pendingRequests.length > 0 && (
+                  <span className="ml-auto bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black shadow-[0_0_10px_#3b82f6]">
+                    {pendingRequests.length} Req
+                  </span>
                 )}
                 {item.id === "logs" && logs.length > 0 && (
                   <span className="ml-auto w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -806,6 +844,10 @@ export default function ZestlyAdminPage() {
                   </div>
                 </div>
 
+                {filteredUsers.length > 50 && (
+                   <p className="text-xs text-orange-400 font-bold px-2">Showing top 50 matches. Refine your search to find more.</p>
+                )}
+
                 {/* Desktop table */}
                 <div className="hidden md:block bg-white/[0.02] border border-white/5 rounded-[2rem] overflow-hidden">
                   <div className="overflow-x-auto">
@@ -813,58 +855,42 @@ export default function ZestlyAdminPage() {
                       <thead className="border-b border-white/5">
                         <tr className="text-slate-500 text-[10px] uppercase tracking-widest">
                           <th className="px-6 py-4 font-bold">Chef</th>
-                          <th className="px-4 py-4 font-bold text-center">Recipes</th>
+                          <th className="px-4 py-4 font-bold text-center">Verified</th>
                           <th className="px-4 py-4 font-bold text-center">Followers</th>
-                          <th className="px-4 py-4 font-bold text-center">Following</th>
                           <th className="px-4 py-4 font-bold">Joined</th>
-                          <th className="px-4 py-4 font-bold text-right">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/[0.03]">
-                        {filteredUsers.length === 0 ? (
+                        {displayUsers.length === 0 ? (
                           <tr>
                             <td colSpan={6} className="text-center py-16 text-slate-500 text-sm">
                               No chefs found
                             </td>
                           </tr>
                         ) : (
-                          filteredUsers.map((u) => (
+                          displayUsers.map((u) => (
                             <tr key={u.id} className="hover:bg-white/[0.02] transition-colors group">
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-3">
-                                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-sm font-black shrink-0">
-                                    {u.full_name.charAt(0).toUpperCase()}
+                                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-sm font-black shrink-0 overflow-hidden">
+                                    {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" /> : u.full_name.charAt(0).toUpperCase()}
                                   </div>
                                   <div>
-                                    <p className="text-white font-bold text-sm leading-tight">{u.full_name}</p>
+                                    <p className="text-white font-bold text-sm leading-tight flex items-center gap-1">
+                                        {u.full_name} 
+                                        {u.is_verified && <svg className="w-3.5 h-3.5 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>}
+                                    </p>
                                     <p className="text-slate-500 text-[11px]">@{u.username}</p>
                                   </div>
                                 </div>
                               </td>
                               <td className="px-4 py-4 text-center">
-                                <span className="text-white font-black bg-white/5 px-3 py-1 rounded-lg text-sm">{u.recipes_count}</span>
+                                <span className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${u.is_verified ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : "bg-slate-500/10 text-slate-400 border-slate-500/20"}`}>
+                                  {u.is_verified ? "Blue Tick" : "Normal"}
+                                </span>
                               </td>
-                              <td className="px-4 py-4 text-center">
-                                <span className="text-orange-400 font-bold text-sm">{u.followers_count}</span>
-                              </td>
-                              <td className="px-4 py-4 text-center">
-                                <span className="text-slate-400 font-bold text-sm">{u.following_count}</span>
-                              </td>
-                              <td className="px-4 py-4">
-                                <span className="text-slate-500 text-xs font-medium">{timeAgo(u.joined)}</span>
-                              </td>
-                              <td className="px-4 py-4 text-right">
-                                <button
-                                  onClick={() => toggleBan(u.id)}
-                                  className={`text-[11px] font-bold px-4 py-2 rounded-xl transition-all outline-none [-webkit-tap-highlight-color:transparent] ${
-                                    bannedIds.has(u.id)
-                                      ? "bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white border border-green-500/20"
-                                      : "bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20"
-                                  }`}
-                                >
-                                  {bannedIds.has(u.id) ? "Unban" : "Ban"}
-                                </button>
-                              </td>
+                              <td className="px-4 py-4 text-center"><span className="text-orange-400 font-bold text-sm">{formatNum(u.followers_count)}</span></td>
+                              <td className="px-4 py-4"><span className="text-slate-500 text-xs font-medium">{timeAgo(u.joined)}</span></td>
                             </tr>
                           ))
                         )}
@@ -875,38 +901,31 @@ export default function ZestlyAdminPage() {
 
                 {/* Mobile cards */}
                 <div className="md:hidden space-y-3">
-                  {filteredUsers.length === 0 ? (
+                  {displayUsers.length === 0 ? (
                     <div className="text-center py-16 text-slate-500 bg-white/[0.02] rounded-3xl border border-white/5 text-sm">
                       No chefs found
                     </div>
                   ) : (
-                    filteredUsers.map((u) => (
+                    displayUsers.map((u) => (
                       <div key={u.id} className="bg-white/[0.02] border border-white/5 rounded-3xl p-4 hover:border-orange-500/20 transition-all">
                         <div className="flex items-start gap-3">
-                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-lg font-black shrink-0">
-                            {u.full_name.charAt(0).toUpperCase()}
+                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-lg font-black shrink-0 overflow-hidden">
+                            {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" /> : u.full_name.charAt(0).toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
-                                <p className="text-white font-black text-base truncate">{u.full_name}</p>
+                                <p className="text-white font-black text-base truncate flex items-center gap-1">
+                                    {u.full_name}
+                                    {u.is_verified && <svg className="w-4 h-4 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>}
+                                </p>
                                 <p className="text-slate-500 text-xs">@{u.username}</p>
                               </div>
-                              <button
-                                onClick={() => toggleBan(u.id)}
-                                className={`shrink-0 text-[10px] font-bold px-3 py-1.5 rounded-xl transition-all outline-none [-webkit-tap-highlight-color:transparent] ${
-                                  bannedIds.has(u.id)
-                                    ? "bg-green-500/10 text-green-500 border border-green-500/20"
-                                    : "bg-red-500/10 text-red-500 border border-red-500/20"
-                                }`}
-                              >
-                                {bannedIds.has(u.id) ? "Unban" : "Ban"}
-                              </button>
                             </div>
                             <div className="flex gap-4 mt-3">
                               {[
                                 { label: "Recipes", val: u.recipes_count },
-                                { label: "Followers", val: u.followers_count },
+                                { label: "Followers", val: formatNum(u.followers_count) },
                                 { label: "Following", val: u.following_count },
                               ].map((s, i) => (
                                 <div key={i} className="text-center">
@@ -949,6 +968,10 @@ export default function ZestlyAdminPage() {
                   </div>
                 </div>
 
+                {filteredRecipes.length > 50 && (
+                   <p className="text-xs text-orange-400 font-bold px-2">Showing top 50 matches. Refine your search to find more.</p>
+                )}
+
                 {/* Desktop table */}
                 <div className="hidden lg:block bg-white/[0.02] border border-white/5 rounded-[2rem] overflow-hidden">
                   <div className="overflow-x-auto">
@@ -966,14 +989,14 @@ export default function ZestlyAdminPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/[0.03]">
-                        {filteredRecipes.length === 0 ? (
+                        {displayRecipes.length === 0 ? (
                           <tr>
                             <td colSpan={8} className="text-center py-16 text-slate-500 text-sm">
                               No recipes found
                             </td>
                           </tr>
                         ) : (
-                          filteredRecipes.map((r) => (
+                          displayRecipes.map((r) => (
                             <tr key={r.id} className="hover:bg-white/[0.02] transition-colors">
                               <td className="px-6 py-3.5">
                                 <div className="flex items-center gap-3">
@@ -1027,12 +1050,12 @@ export default function ZestlyAdminPage() {
 
                 {/* Mobile / Tablet cards */}
                 <div className="lg:hidden grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {filteredRecipes.length === 0 ? (
+                  {displayRecipes.length === 0 ? (
                     <div className="col-span-full text-center py-16 text-slate-500 bg-white/[0.02] rounded-3xl border border-white/5 text-sm">
                       No recipes found
                     </div>
                   ) : (
-                    filteredRecipes.map((r) => (
+                    displayRecipes.map((r) => (
                       <div key={r.id} className="bg-white/[0.02] border border-white/5 rounded-3xl overflow-hidden hover:border-orange-500/20 transition-all">
                         <div className="w-full h-36 bg-white/5 flex items-center justify-center relative overflow-hidden">
                           {r.image_url ? (
@@ -1075,79 +1098,96 @@ export default function ZestlyAdminPage() {
                 <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-[2rem] p-6 relative overflow-hidden flex flex-col md:flex-row justify-between items-center gap-6">
                     <div className="absolute right-0 top-0 w-64 h-64 bg-purple-500/20 blur-[80px] pointer-events-none"></div>
                     <div>
-                        <h2 className="text-2xl font-black text-white flex items-center gap-2">
-                            Growth Algorithm Engine 🚀
-                        </h2>
-                        <p className="text-indigo-200 text-sm mt-1 max-w-md">
-                            Turn this ON to artificially boost likes, views, and followers across the app. Makes the app look highly active to new users.
-                        </p>
+                        <h2 className="text-2xl font-black text-white flex items-center gap-2">Growth Algorithm Engine 🚀</h2>
+                        <p className="text-indigo-200 text-sm mt-1 max-w-md">Turn this ON to artificially boost likes, views, and followers across the app dynamically.</p>
                     </div>
-                    <button
-                        onClick={toggleFakeMode}
-                        className={`relative w-20 h-10 rounded-full p-1.5 transition-all duration-300 outline-none shrink-0 border shadow-inner ${fakeMode ? "bg-green-500 border-green-400 shadow-[0_0_20px_#4ade8040]" : "bg-white/10 border-white/5"}`}
-                    >
-                        <div className={`w-7 h-7 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center text-[10px] ${fakeMode ? "translate-x-10 text-green-500" : "translate-x-0 text-slate-500"}`}>
+                    <button onClick={toggleFakeMode} className={`relative w-20 h-10 rounded-full p-1.5 transition-all duration-300 outline-none shrink-0 border shadow-inner ${fakeMode ? "bg-green-500 border-green-400 shadow-[0_0_20px_#4ade8040]" : "bg-white/10 border-white/5"}`}>
+                        <div className={`w-7 h-7 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center text-[10px] font-black ${fakeMode ? "translate-x-10 text-green-500" : "translate-x-0 text-slate-500"}`}>
                             {fakeMode ? "ON" : "OFF"}
                         </div>
                     </button>
                 </div>
 
-                {/* 2. God Mode User Manipulation */}
+                {/* 2. Verification Requests */}
+                {pendingRequests.length > 0 && (
+                    <div className="bg-blue-500/5 border border-blue-500/20 rounded-[2rem] p-5 sm:p-7">
+                        <h3 className="text-blue-400 font-black text-lg mb-4 flex items-center gap-2">🛡️ Verification Requests</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {pendingRequests.map(req => (
+                                <div key={req.id} className="bg-black/40 border border-white/5 p-4 rounded-2xl flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full overflow-hidden bg-white/10">
+                                            {req.avatar_url ? <img src={req.avatar_url} className="w-full h-full object-cover"/> : <span className="flex items-center justify-center w-full h-full text-white font-bold">{req.full_name.charAt(0)}</span>}
+                                        </div>
+                                        <div>
+                                            <p className="text-white font-bold text-sm">{req.full_name}</p>
+                                            <p className="text-blue-400 text-[10px]">Applied for Blue Tick</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => toggleVerify(req.id, false)} className="w-8 h-8 rounded-xl bg-green-500/20 text-green-400 hover:bg-green-500 hover:text-white flex items-center justify-center font-bold">✓</button>
+                                        <button onClick={() => toggleVerify(req.id, true)} className="w-8 h-8 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white flex items-center justify-center font-bold">✕</button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* 3. God Mode User Manipulation */}
                 <div className="bg-white/[0.02] border border-white/5 rounded-[2rem] p-5 sm:p-7">
                     <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-end mb-6">
                         <div>
                             <h3 className="text-white font-black text-xl flex items-center gap-2">User God Mode ⚡</h3>
-                            <p className="text-slate-500 text-xs mt-1">Edit any profile or manually add/remove fake followers.</p>
+                            <p className="text-slate-500 text-xs mt-1">Edit profile, set followers, grant badge, or delete DP.</p>
                         </div>
-                        <input
-                            type="text"
-                            placeholder="Search user to hack..."
-                            value={userSearch}
-                            onChange={(e) => setUserSearch(e.target.value)}
-                            className="w-full sm:w-64 bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-indigo-500/50"
-                        />
+                        <input type="text" placeholder="Search user to hack..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)} className="w-full sm:w-64 bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-indigo-500/50" />
                     </div>
 
                     <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden">
-                        {filteredUsers.length === 0 ? (
+                        {displayUsers.length === 0 ? (
                             <p className="text-center text-slate-500 py-10">No users found.</p>
                         ) : (
-                            filteredUsers.map((u) => (
-                                <div key={u.id} className="bg-black/40 border border-white/5 p-4 rounded-2xl flex flex-col md:flex-row gap-4 items-center justify-between hover:border-indigo-500/30 transition-all">
-                                    <div className="flex items-center gap-3 w-full md:w-auto">
-                                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-black text-xl shrink-0">
-                                            {u.full_name.charAt(0)}
+                            displayUsers.map((u) => (
+                                <div key={u.id} className="bg-black/40 border border-white/5 p-4 rounded-2xl flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between hover:border-indigo-500/30 transition-all">
+                                    
+                                    <div className="flex items-center gap-3 w-full xl:w-1/4">
+                                        <div className="relative">
+                                            <div className="w-12 h-12 rounded-full overflow-hidden bg-white/10 flex items-center justify-center font-black text-xl border border-white/10">
+                                                {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover"/> : u.full_name.charAt(0)}
+                                            </div>
+                                            {u.is_verified && <div className="absolute -bottom-1 -right-1 bg-white rounded-full"><svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></div>}
                                         </div>
                                         <div className="min-w-0">
-                                            <p className="text-white font-bold truncate">{u.full_name}</p>
+                                            <p className="text-white font-bold truncate flex items-center gap-1">{u.full_name}</p>
                                             <p className="text-slate-400 text-xs truncate">@{u.username}</p>
                                         </div>
                                     </div>
                                     
-                                    <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
+                                    <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto justify-end">
                                         
-                                        {/* Fake Follower Injector */}
-                                        <div className="flex items-center bg-white/[0.03] border border-white/10 rounded-xl p-1">
-                                            <button onClick={() => updateBonusFollowers(u.id, -10)} className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-slate-400">-10</button>
-                                            <div className="px-3 text-center min-w-[90px]">
-                                                <p className="text-white font-black text-sm">{u.followers_count}</p>
-                                                <p className="text-[9px] text-green-400 font-bold uppercase tracking-widest">{u.bonus_followers} Fake</p>
+                                        {/* EXACT Follower Control */}
+                                        <div className="flex items-center gap-2 bg-white/[0.03] border border-white/10 rounded-xl p-2 shrink-0">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase w-12 text-center text-wrap">Bonus Follow</span>
+                                            <input 
+                                                type="number" 
+                                                value={u.bonus_followers} 
+                                                onChange={(e) => handleBonusFollowersChange(u.id, e.target.value)}
+                                                className="w-20 bg-black/50 border border-white/10 rounded-lg px-2 py-1.5 text-center font-black text-sm text-green-400 outline-none focus:border-green-500"
+                                            />
+                                            <div className="text-[10px] text-slate-500 flex flex-col text-right pr-2">
+                                                <span className="text-orange-400 font-bold">Total: {formatNum(u.followers_count)}</span>
+                                                <span>Real: {u.real_followers}</span>
                                             </div>
-                                            <button onClick={() => updateBonusFollowers(u.id, 50)} className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white flex items-center justify-center font-bold text-xs">+50</button>
                                         </div>
 
-                                        <button 
-                                            onClick={() => handleEditUserClick(u)}
-                                            className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white text-xs font-bold rounded-xl transition-all"
-                                        >
-                                            Edit
+                                        {/* Power Action Buttons */}
+                                        <button onClick={() => toggleVerify(u.id, u.is_verified)} className={`px-3 py-2 text-[11px] font-bold rounded-xl transition-all ${u.is_verified ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500 hover:text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'}`}>
+                                            {u.is_verified ? "Remove Badge" : "Give Badge"}
                                         </button>
-                                        <button 
-                                            onClick={() => fullyDeleteUser(u.id)}
-                                            className="px-4 py-2.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-xs font-bold rounded-xl transition-all"
-                                        >
-                                            Delete
-                                        </button>
+                                        <button onClick={() => handleEditUserClick(u)} className="px-3 py-2 bg-white/5 hover:bg-white/10 text-white text-[11px] font-bold rounded-xl transition-all">Edit</button>
+                                        <button onClick={() => removeAvatar(u.id)} disabled={!u.avatar_url} className="px-3 py-2 bg-yellow-500/10 text-yellow-500 disabled:opacity-30 hover:bg-yellow-500 hover:text-black text-[11px] font-bold rounded-xl transition-all">Del DP</button>
+                                        <button onClick={() => fullyDeleteUser(u.id)} className="px-3 py-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-[11px] font-bold rounded-xl transition-all">Ban</button>
                                     </div>
                                 </div>
                             ))
@@ -1155,71 +1195,6 @@ export default function ZestlyAdminPage() {
                     </div>
                 </div>
 
-              </div>
-            )}
-
-            {/* ════════════════════════════════════
-                ACTIVITY / LOGS SECTION
-            ════════════════════════════════════ */}
-            {activeSection === "logs" && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-white font-black text-xl">Activity Logs</h2>
-                    <p className="text-slate-500 text-xs mt-0.5">Live events from your Zestly database</p>
-                  </div>
-                  <button
-                    onClick={() => setLogs([])}
-                    className="text-xs font-bold px-4 py-2 rounded-xl bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white transition-all border border-white/5 outline-none [-webkit-tap-highlight-color:transparent]"
-                  >
-                    Clear
-                  </button>
-                </div>
-
-                <div className="bg-[#0b0b0e] border border-white/5 rounded-[2rem] overflow-hidden font-mono">
-                  {/* Terminal header */}
-                  <div className="flex items-center gap-2 px-5 py-3.5 border-b border-white/5 bg-white/[0.01]">
-                    <div className="w-3 h-3 rounded-full bg-red-500/60"></div>
-                    <div className="w-3 h-3 rounded-full bg-yellow-500/60"></div>
-                    <div className="w-3 h-3 rounded-full bg-green-500/60"></div>
-                    <span className="text-slate-600 text-xs font-bold ml-2">zestly_engine.log</span>
-                    <span className="ml-auto text-orange-500 text-xs font-bold animate-pulse">● LIVE</span>
-                  </div>
-                  <div className="p-5 max-h-[520px] overflow-y-auto space-y-3 [&::-webkit-scrollbar]:hidden">
-                    {logs.length === 0 ? (
-                      <div className="text-center py-20 text-slate-600">
-                        <p className="text-2xl mb-2">📭</p>
-                        <p className="text-sm">No activity yet. Events from Supabase will appear here.</p>
-                      </div>
-                    ) : (
-                      logs.map((log) => (
-                        <div key={log.id} className="flex items-start gap-3 bg-black/40 rounded-2xl p-3.5 border border-white/[0.04]">
-                          <span className="text-lg shrink-0">{log.icon}</span>
-                          <div className="flex-1 min-w-0">
-                            <span
-                              className={`text-sm font-medium leading-relaxed ${
-                                log.type === "danger"
-                                  ? "text-red-400"
-                                  : log.type === "warning"
-                                  ? "text-yellow-400"
-                                  : log.type === "success"
-                                  ? "text-green-400"
-                                  : "text-orange-400"
-                              }`}
-                            >
-                              {log.action}
-                            </span>
-                          </div>
-                          <span className="text-slate-600 text-xs font-bold shrink-0">{log.time}</span>
-                        </div>
-                      ))
-                    )}
-                    <div className="flex items-center gap-2 text-slate-600 text-xs pt-2">
-                      <span className="text-orange-500 animate-pulse font-black">_</span>
-                      Zestly Engine V2.0 • {new Date().toLocaleTimeString()}
-                    </div>
-                  </div>
-                </div>
               </div>
             )}
 
