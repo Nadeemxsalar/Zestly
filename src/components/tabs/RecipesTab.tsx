@@ -26,12 +26,28 @@ interface Recipe {
   authorId?: string; 
 }
 
+// 🚀 FIXED: Helper to properly convert compressed Base64 image to a File Blob
+const base64ToBlob = (base64Data: string, contentType: string) => {
+  const byteCharacters = atob(base64Data.split(',')[1]);
+  const byteArrays = [];
+  for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+    const slice = byteCharacters.slice(offset, offset + 512);
+    const byteNumbers = new Array(slice.length);
+    for (let i = 0; i < slice.length; i++) {
+      byteNumbers[i] = slice.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    byteArrays.push(byteArray);
+  }
+  return new Blob(byteArrays, { type: contentType });
+};
+
 export default function RecipesTab({ user }: RecipesTabProps) {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [isLoadingDB, setIsLoadingDB] = useState(true);
   const router = useRouter();
 
-  // 🚀 PAGINATION & INFINITE SCROLL STATES
+  // PAGINATION & INFINITE SCROLL STATES
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -49,7 +65,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
 
   const [mounted, setMounted] = useState(false);
   
-  // 🚀 PROFESSIONAL CUSTOM POPUPS & TOAST
+  // PROFESSIONAL CUSTOM POPUPS & TOAST
   const [alertModal, setAlertModal] = useState({ isOpen: false, message: "", type: "info" });
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean, message: string, onConfirm: (() => void) | null }>({ isOpen: false, message: "", onConfirm: null });
   const [toast, setToast] = useState({ isOpen: false, message: "" });
@@ -108,7 +124,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     authorId: dbRecipe.author_id || dbRecipe.user_id 
   });
 
-  // 🚀 INITIAL FETCH (PAGE 0)
+  // INITIAL FETCH (PAGE 0)
   const fetchRecipes = async () => {
     setIsLoadingDB(true);
     const { data, error } = await supabase
@@ -125,7 +141,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     setIsLoadingDB(false);
   };
 
-  // 🚀 LOAD MORE POSTS (INFINITE SCROLL)
+  // LOAD MORE POSTS (INFINITE SCROLL)
   const loadMoreRecipes = async () => {
     if (isFetchingMore || !hasMore || isLoadingDB) return;
     setIsFetchingMore(true);
@@ -155,7 +171,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     setIsFetchingMore(false);
   };
 
-  // 🚀 INTERSECTION OBSERVER EFFECT
+  // INTERSECTION OBSERVER EFFECT
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -197,7 +213,6 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     showToast(`Link for ${postName} copied! 🚀`);
   };
 
-  // 🚀 PREMIUM DELETE WITH CUSTOM CONFIRMATION
   const handleDelete = (id: string) => {
     if (!checkAuth()) return;
     showConfirm("Are you sure you want to permanently delete this recipe? 🗑️", async () => {
@@ -274,22 +289,23 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     if (imageInputMode === "link" && imageUrlLink.trim()) {
       finalImageUrl = imageUrlLink.trim();
     } else if (imageInputMode === "upload" && imageFile) {
-      finalImageUrl = imageFile; 
       try {
-        const fetchRes = await fetch(imageFile);
-        const blob = await fetchRes.blob();
+        // 🚀 FIXED: Using custom helper to safely convert base64 to Blob
+        const blob = base64ToBlob(imageFile, "image/jpeg");
         const fileName = `recipe-${Date.now()}.jpg`;
 
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from("recipe-images")
-          .upload(fileName, blob, { contentType: "image/jpeg" });
+          .upload(fileName, blob, { contentType: "image/jpeg", cacheControl: '3600' });
 
         if (!uploadError && uploadData) {
           const { data: publicUrlData } = supabase.storage.from("recipe-images").getPublicUrl(fileName);
           finalImageUrl = publicUrlData.publicUrl; 
+        } else {
+            console.error("Storage upload failed:", uploadError);
         }
       } catch (err) {
-        console.error("Image upload skipped:", err);
+        console.error("Image processing skipped:", err);
       }
     }
 
@@ -318,8 +334,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
     const { data, error } = await supabase.from("recipes").insert([newRecipeData]).select();
     
     if (!error && data) {
-      const dbRecipe = data[0];
-      const addedRecipe: Recipe = formatRecipe(dbRecipe);
+      const addedRecipe = formatRecipe(data[0]);
       setRecipes([addedRecipe, ...recipes]);
       showToast("Recipe added successfully! 🎉");
     } else {
@@ -487,7 +502,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                 </div>
               ))}
               
-              {/* 🚀 INFINITE SCROLL LOADER / TARGET */}
+              {/* INFINITE SCROLL LOADER / TARGET */}
               {filter === "All" && !searchQuery && (
                 <div ref={observerTarget} className="w-full flex flex-col items-center justify-center py-8 col-span-full">
                   {isFetchingMore && <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>}
@@ -513,7 +528,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
             </div>
             
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-6 sm:px-10 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 sm:px-10 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               <form onSubmit={handleAddRecipe} className="space-y-8 pb-10">
                 
                 {/* Image Input Selection */}
@@ -531,7 +546,6 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                       onClick={() => !imageFile && !isCompressing && fileInputRef.current?.click()}
                       className={`relative w-full aspect-video sm:h-72 rounded-[2.5rem] border-2 border-dashed transition-all flex flex-col items-center justify-center group overflow-hidden outline-none [-webkit-tap-highlight-color:transparent] ${isDragging ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10' : 'border-slate-300 dark:border-white/20 hover:border-orange-500 bg-slate-50 dark:bg-[#0c0c10] cursor-pointer'}`}
                     >
-                      {/* Dynamic key prevents React from keeping internal state across upload triggers */}
                       <input key={imageFile ? "filled" : "empty"} type="file" accept="image/*" onChange={handleImageChange} ref={fileInputRef} disabled={isCompressing || isSaving} className="hidden" />
                       
                       {isCompressing ? (
@@ -575,7 +589,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                   )}
                 </div>
 
-                {/* Controlled Inputs with strict fallback logic */}
+                {/* Controlled Inputs */}
                 <div className="flex flex-col sm:flex-row gap-4">
                   <input type="text" placeholder="Recipe Name" value={newName || ""} onChange={(e) => setNewName(e.target.value)} disabled={isSaving} className="flex-1 w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white outline-none focus:border-orange-500 transition-all cursor-text disabled:opacity-50 placeholder:text-slate-400" required />
                   <div className="relative w-full sm:w-40 shrink-0">
@@ -604,67 +618,66 @@ export default function RecipesTab({ user }: RecipesTabProps) {
                   </div>
                 </div>
 
-                <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-5 rounded-3xl">
+                <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-4 sm:p-5 rounded-3xl">
                   <p className="text-slate-500 dark:text-slate-400 text-xs font-bold mb-4 uppercase tracking-wider">Macros (per serving)</p>
-                  <div className="grid grid-cols-3 gap-3 sm:gap-4">
-                    <div className="flex items-center bg-white dark:bg-black/40 rounded-2xl px-3 sm:px-4 py-3 border border-slate-200 dark:border-white/5 focus-within:border-orange-500 transition-colors shadow-sm dark:shadow-none">
+                  <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                    <div className="flex items-center bg-white dark:bg-black/40 rounded-xl sm:rounded-2xl px-2 sm:px-4 py-3 border border-slate-200 dark:border-white/5 focus-within:border-orange-500 transition-colors shadow-sm dark:shadow-none">
                       <span className="text-blue-500 font-bold text-xs sm:text-sm mr-2">P</span>
                       <input type="number" placeholder="0" value={newProtein || ""} onChange={(e) => setNewProtein(e.target.value)} className="w-full bg-transparent text-slate-900 dark:text-white font-bold outline-none text-sm sm:text-base placeholder:text-slate-400 cursor-text" />
-                      <span className="text-slate-400 text-xs sm:text-sm font-bold">g</span>
                     </div>
-                    <div className="flex items-center bg-white dark:bg-black/40 rounded-2xl px-3 sm:px-4 py-3 border border-slate-200 dark:border-white/5 focus-within:border-orange-500 transition-colors shadow-sm dark:shadow-none">
+                    <div className="flex items-center bg-white dark:bg-black/40 rounded-xl sm:rounded-2xl px-2 sm:px-4 py-3 border border-slate-200 dark:border-white/5 focus-within:border-orange-500 transition-colors shadow-sm dark:shadow-none">
                       <span className="text-yellow-500 font-bold text-xs sm:text-sm mr-2">C</span>
                       <input type="number" placeholder="0" value={newCarbs || ""} onChange={(e) => setNewCarbs(e.target.value)} className="w-full bg-transparent text-slate-900 dark:text-white font-bold outline-none text-sm sm:text-base placeholder:text-slate-400 cursor-text" />
-                      <span className="text-slate-400 text-xs sm:text-sm font-bold">g</span>
                     </div>
-                    <div className="flex items-center bg-white dark:bg-black/40 rounded-2xl px-3 sm:px-4 py-3 border border-slate-200 dark:border-white/5 focus-within:border-orange-500 transition-colors shadow-sm dark:shadow-none">
+                    <div className="flex items-center bg-white dark:bg-black/40 rounded-xl sm:rounded-2xl px-2 sm:px-4 py-3 border border-slate-200 dark:border-white/5 focus-within:border-orange-500 transition-colors shadow-sm dark:shadow-none">
                       <span className="text-red-500 font-bold text-xs sm:text-sm mr-2">F</span>
                       <input type="number" placeholder="0" value={newFats || ""} onChange={(e) => setNewFats(e.target.value)} className="w-full bg-transparent text-slate-900 dark:text-white font-bold outline-none text-sm sm:text-base placeholder:text-slate-400 cursor-text" />
-                      <span className="text-slate-400 text-xs sm:text-sm font-bold">g</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-5 rounded-3xl space-y-4">
-                  <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Ingredients</p>
+                {/* 🚀 FIXED: Mobile Responsive Ingredients */}
+                <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-4 sm:p-5 rounded-3xl space-y-3">
+                  <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Ingredients</p>
                   {newIngredients.map((ing, idx) => (
-                    <div key={`ing-${idx}`} className="flex gap-3 items-center">
-                      <div className="w-6 text-center text-sm font-bold text-slate-400">{idx + 1}.</div>
-                      <input type="text" placeholder="e.g. 2 Chopped Onions" value={ing || ""} onChange={(e) => handleIngredientChange(idx, e.target.value)} disabled={isSaving} className="flex-1 bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white font-medium outline-none focus:border-orange-500 transition-all cursor-text shadow-sm dark:shadow-none" required />
+                    <div key={`ing-${idx}`} className="flex gap-2 items-center w-full">
+                      <div className="w-5 text-center text-xs font-bold text-slate-400 shrink-0">{idx + 1}.</div>
+                      <input type="text" placeholder="e.g. 2 Chopped Onions" value={ing || ""} onChange={(e) => handleIngredientChange(idx, e.target.value)} disabled={isSaving} className="flex-1 min-w-0 bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-xl px-3 sm:px-5 py-3 sm:py-4 text-slate-900 dark:text-white font-medium outline-none focus:border-orange-500 transition-all cursor-text shadow-sm dark:shadow-none text-sm" required />
                       {newIngredients.length > 1 && (
-                        <button type="button" onClick={() => removeIngredientField(idx)} className="text-slate-400 hover:text-red-500 p-2 transition-colors cursor-pointer active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
-                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        <button type="button" onClick={() => removeIngredientField(idx)} className="text-slate-400 hover:text-red-500 p-1.5 sm:p-2 transition-colors cursor-pointer active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shrink-0">
+                          <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                         </button>
                       )}
                     </div>
                   ))}
-                  <button type="button" onClick={addIngredientField} className="cursor-pointer text-orange-500 font-bold text-base flex items-center gap-1.5 mt-2 ml-9 hover:underline outline-none [-webkit-tap-highlight-color:transparent]">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg> Add Ingredient
+                  <button type="button" onClick={addIngredientField} className="cursor-pointer text-orange-500 font-bold text-sm sm:text-base flex items-center gap-1.5 mt-2 ml-7 sm:ml-9 hover:underline outline-none [-webkit-tap-highlight-color:transparent]">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg> Add Ingredient
                   </button>
                 </div>
 
-                <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-5 rounded-3xl space-y-4">
-                  <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Cooking Steps</p>
+                {/* 🚀 FIXED: Mobile Responsive Steps */}
+                <div className="bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 p-4 sm:p-5 rounded-3xl space-y-3">
+                  <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Cooking Steps</p>
                   {newSteps.map((step, idx) => (
-                    <div key={`step-${idx}`} className="flex gap-3 items-start">
-                      <div className="w-6 pt-4 text-center text-sm font-bold text-slate-400">{idx + 1}.</div>
-                      <textarea placeholder="e.g. Heat oil in a pan..." value={step || ""} onChange={(e) => handleStepChange(idx, e.target.value)} disabled={isSaving} rows={2} className="flex-1 bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 text-slate-900 dark:text-white font-medium outline-none focus:border-orange-500 transition-all resize-none cursor-text shadow-sm dark:shadow-none" required></textarea>
+                    <div key={`step-${idx}`} className="flex gap-2 items-start w-full">
+                      <div className="w-5 pt-3 sm:pt-4 text-center text-xs font-bold text-slate-400 shrink-0">{idx + 1}.</div>
+                      <textarea placeholder="e.g. Heat oil in a pan..." value={step || ""} onChange={(e) => handleStepChange(idx, e.target.value)} disabled={isSaving} rows={2} className="flex-1 min-w-0 bg-white dark:bg-black/40 border border-slate-200 dark:border-white/10 rounded-xl px-3 sm:px-5 py-3 sm:py-4 text-slate-900 dark:text-white font-medium outline-none focus:border-orange-500 transition-all resize-none cursor-text shadow-sm dark:shadow-none text-sm" required></textarea>
                       {newSteps.length > 1 && (
-                        <button type="button" onClick={() => removeStepField(idx)} className="text-slate-400 hover:text-red-500 p-2 mt-2 transition-colors cursor-pointer active:scale-95 outline-none [-webkit-tap-highlight-color:transparent]">
-                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        <button type="button" onClick={() => removeStepField(idx)} className="text-slate-400 hover:text-red-500 p-1.5 sm:p-2 mt-1 sm:mt-2 transition-colors cursor-pointer active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shrink-0">
+                          <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                         </button>
                       )}
                     </div>
                   ))}
-                  <button type="button" onClick={addStepField} className="cursor-pointer text-orange-500 font-bold text-base flex items-center gap-1.5 mt-2 ml-9 hover:underline outline-none [-webkit-tap-highlight-color:transparent]">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg> Add Step
+                  <button type="button" onClick={addStepField} className="cursor-pointer text-orange-500 font-bold text-sm sm:text-base flex items-center gap-1.5 mt-2 ml-7 sm:ml-9 hover:underline outline-none [-webkit-tap-highlight-color:transparent]">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg> Add Step
                   </button>
                 </div>
                 
                 <div className="pt-4">
-                  <button type="submit" disabled={isSaving || isCompressing} className="cursor-pointer w-full bg-linear-to-r from-orange-500 to-red-500 text-white font-black py-5 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_8px_20px_#f973164d] flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed outline-none [-webkit-tap-highlight-color:transparent]">
+                  <button type="submit" disabled={isSaving || isCompressing} className="cursor-pointer w-full bg-linear-to-r from-orange-500 to-red-500 text-white font-black py-4 sm:py-5 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_8px_20px_#f973164d] flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed outline-none [-webkit-tap-highlight-color:transparent]">
                     {isSaving ? (
-                      <><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Uploading Magic...</>
+                      <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Uploading Magic...</>
                     ) : "Save to Cloud"}
                   </button>
                 </div>
@@ -746,7 +759,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
         document.body
       )}
 
-      {/* 🚀 NEW: CUSTOM ALERT MODAL (Replaces window.alert) */}
+      {/* 🚀 CUSTOM ALERT MODAL (Replaces window.alert) */}
       {mounted && alertModal.isOpen && createPortal(
         <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200" onClick={() => setAlertModal({ ...alertModal, isOpen: false })}>
             <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-sm rounded-[2rem] p-6 shadow-2xl border border-slate-200 dark:border-white/10 text-center" onClick={e => e.stopPropagation()}>
@@ -760,7 +773,7 @@ export default function RecipesTab({ user }: RecipesTabProps) {
         </div>, document.body
       )}
 
-      {/* 🚀 NEW: CUSTOM CONFIRM MODAL (Replaces window.confirm) */}
+      {/* 🚀 CUSTOM CONFIRM MODAL (Replaces window.confirm) */}
       {mounted && confirmModal.isOpen && createPortal(
         <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200" onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}>
             <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-sm rounded-[2rem] p-6 shadow-2xl border border-slate-200 dark:border-white/10 text-center" onClick={e => e.stopPropagation()}>
