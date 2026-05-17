@@ -27,6 +27,9 @@ export default function HomePage() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
 
+  // 🚀 CUSTOM ALERT MODAL STATE
+  const [customAlert, setCustomAlert] = useState({ isOpen: false, title: "", message: "", icon: "🔒" });
+
   // 🚀 NAYA CODE: Page load hote hi browser ki memory se purana tab uthao
   useEffect(() => {
     setMounted(true);
@@ -110,12 +113,16 @@ export default function HomePage() {
     })));
   };
 
-  // 🚀 UPGRADED: Ab tab change hone par browser ki memory mein bhi save hoga
+  // 🚀 UPGRADED: Tab change hone par custom title aur narrative ke sath attractive popup setup
   const handleTabClick = (tab: string) => {
     const privateTabs = ["pantry", "shop", "profile"];
     if (!user && privateTabs.includes(tab)) {
-      alert("Chef, you need to log in to access this feature! 🔒👨‍🍳");
-      router.push("/login");
+      setCustomAlert({ 
+        isOpen: true, 
+        title: "Login Required", 
+        message: `Chef, you need to log in to access the ${tab.charAt(0).toUpperCase() + tab.slice(1)} section! 👨‍🍳`,
+        icon: "🧑‍🍳"
+      });
       return;
     }
     setActiveTab(tab);
@@ -163,8 +170,8 @@ export default function HomePage() {
       {/* --- HEADER --- */}
       <header className="sticky top-0 z-40 bg-white/85 dark:bg-[#07070a]/85 backdrop-blur-xl border-b border-slate-200 dark:border-white/5 px-5 py-3 flex justify-between items-center transition-colors duration-300 shadow-sm dark:shadow-none">
         
-        <div className="text-2xl font-black bg-clip-text text-transparent bg-linear-to-r from-orange-500 to-red-500 tracking-tighter cursor-pointer" onClick={() => handleTabClick("explore")}>
-          Zestly<span className="text-slate-400 dark:text-white text-sm ml-1 opacity-50">Pro</span>
+        <div className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-orange-500 to-red-500 tracking-tighter cursor-pointer" onClick={() => handleTabClick("explore")}>
+           Zestly<span className="text-slate-400 dark:text-white text-sm ml-1 opacity-50">Pro</span>
         </div>
         
         <div className="flex items-center gap-3.5">
@@ -181,7 +188,7 @@ export default function HomePage() {
                 )}
               </button>
 
-              <div className="bg-linear-to-r from-yellow-500 to-orange-500 text-white text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full shadow-[0_0_10px_#eab3084d] cursor-pointer hover:scale-105 transition-transform" onClick={() => handleTabClick("profile")}>
+              <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full shadow-[0_0_10px_#eab3084d] cursor-pointer hover:scale-105 transition-transform" onClick={() => handleTabClick("profile")}>
                 ⭐ 120 XP
               </div>
             </div>
@@ -273,7 +280,7 @@ export default function HomePage() {
                 <div className="flex flex-col gap-1">
                   {notifications.map((notif) => (
                     <div key={notif.id} className={`flex items-center gap-4 p-4 rounded-2xl transition-colors ${!notif.is_read ? 'bg-orange-50 dark:bg-orange-500/10' : 'hover:bg-slate-50 dark:hover:bg-white/5'}`}>
-                      <div className="w-12 h-12 rounded-full bg-linear-to-tr from-orange-500 to-red-500 shrink-0 flex items-center justify-center text-white text-lg font-bold">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-orange-500 to-red-500 shrink-0 flex items-center justify-center text-white text-lg font-bold">
                         {notif.actorName.charAt(0)}
                       </div>
                       <div className="flex-1">
@@ -293,6 +300,47 @@ export default function HomePage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 🚀 NEW: PROFESSIONAL CUSTOM ALERT MODAL */}
+      {mounted && customAlert.isOpen && createPortal(
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+          <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-sm rounded-[2rem] p-6 shadow-2xl border border-slate-200 dark:border-white/10 text-center flex flex-col items-center">
+            
+            {/* Dynamic Professional Icon */}
+            <div className="w-16 h-16 bg-orange-100 dark:bg-orange-500/20 text-orange-500 rounded-full flex items-center justify-center text-3xl mb-4 shadow-inner">
+              {customAlert.icon}
+            </div>
+            
+            {/* Dynamic Professional Title */}
+            <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2 tracking-tight">
+              {customAlert.title}
+            </h3>
+            
+            {/* Contextual Message */}
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 font-medium px-2 leading-relaxed">
+              {customAlert.message}
+            </p>
+            
+            {/* Action Buttons */}
+            <div className="flex gap-3 w-full">
+              <button 
+                onClick={() => setCustomAlert({ isOpen: false, title: "", message: "", icon: "" })} 
+                className="flex-1 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-white font-bold py-3.5 rounded-xl transition-all outline-none cursor-pointer active:scale-95"
+              >
+                Not Now
+              </button>
+              <button 
+                onClick={() => { setCustomAlert({ isOpen: false, title: "", message: "", icon: "" }); router.push("/login"); }} 
+                className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-bold py-3.5 rounded-xl transition-all outline-none shadow-[0_4px_15px_#f973164d] cursor-pointer active:scale-95"
+              >
+                Log In
+              </button>
+            </div>
+
           </div>
         </div>,
         document.body
