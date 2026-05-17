@@ -142,9 +142,38 @@ export default function HomePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-[#07070a] transition-colors duration-300">
-         <div className="animate-spin h-12 w-12 border-4 border-orange-500 border-t-transparent rounded-full mb-4"></div>
-         <p className="text-orange-500 font-bold animate-pulse">Loading Zestly...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-[#07070a] transition-colors duration-300 relative overflow-hidden">
+        
+        {/* 🌟 Ambient Background Glows */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-orange-500/10 dark:bg-orange-500/20 blur-[80px] rounded-full pointer-events-none"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-red-500/10 dark:bg-red-500/20 blur-[40px] rounded-full animate-pulse pointer-events-none"></div>
+
+        {/* 🚀 Advanced Multi-Ring Spinner */}
+        <div className="relative flex items-center justify-center mb-8">
+          {/* Outer rotating dashed ring */}
+          <div className="absolute w-24 h-24 border-2 border-dashed border-orange-500/30 dark:border-orange-500/40 rounded-full animate-[spin_5s_linear_infinite]"></div>
+          {/* Inner fast rotating gradient ring */}
+          <div className="absolute w-16 h-16 border-t-2 border-r-2 border-orange-500 rounded-full animate-spin"></div>
+          {/* Center Pulsing Logo Box */}
+          <div className="w-12 h-12 bg-gradient-to-tr from-orange-500 to-red-600 rounded-2xl flex items-center justify-center shadow-[0_0_25px_rgba(249,115,22,0.5)] animate-pulse z-10">
+            <span className="text-white text-2xl font-black tracking-tighter">Z</span>
+          </div>
+        </div>
+
+        {/* ✨ Animated Text & Bouncing Dots */}
+        <div className="flex flex-col items-center gap-2 z-10">
+          <h2 className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-orange-500 to-red-500 tracking-widest drop-shadow-sm">
+            ZESTLY
+          </h2>
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-bounce shadow-[0_0_5px_#f97316]" style={{ animationDelay: "0ms" }}></span>
+            <span className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-bounce shadow-[0_0_5px_#f97316]" style={{ animationDelay: "150ms" }}></span>
+            <span className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-bounce shadow-[0_0_5px_#f97316]" style={{ animationDelay: "300ms" }}></span>
+          </div>
+          <p className="text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em] mt-3">
+            Preparing your kitchen...
+          </p>
+        </div>
       </div>
     );
   }
