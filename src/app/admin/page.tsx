@@ -38,7 +38,9 @@ interface RecipeRow {
   name: string;
   author_name: string;
   type: string;
-  likes_count: number;
+  likes_count: number; // Real + Engine
+  real_likes: number;  // Only Real Likes
+  engine_likes: number; // Fake algorithm likes
   comments_count: number;
   calories: number;
   difficulty: string;
@@ -73,6 +75,56 @@ const timeAgo = (dateStr: string) => {
 
 const formatNum = (n: number) =>
   n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+
+// 🚀 SMART ORGANIC GROWTH ALGORITHMS
+const calculateFakeFollowers = (id: string, createdAt: string, isFakeOn: boolean) => {
+    if (!isFakeOn || !id || !createdAt) return 0;
+    const nowMs = Date.now();
+    const joinedMs = new Date(createdAt).getTime();
+    const ageInHours = Math.max(0, (nowMs - joinedMs) / (1000 * 60 * 60));
+    
+    // Stable randomness based on user ID
+    const char1 = id.charCodeAt(0) || 10;
+    const char2 = id.charCodeAt(1) || 10;
+    const char3 = id.charCodeAt(2) || 10;
+
+    // 1. Organic Delay: Growth starts 2 to 24 hours AFTER joining
+    const startDelayHours = (char1 % 22) + 2; 
+    if (ageInHours <= startDelayHours) return 0; // Starts at zero!
+
+    // 2. Growth Phase: calculate hours since delay finished
+    const activeHours = ageInHours - startDelayHours;
+    
+    // 3. Growth Rate: 0.5 to 8 followers per hour (Slow & Steady)
+    const growthRate = ((char2 % 75) / 10) + 0.5; 
+
+    // 4. Maximum Cap: Limits followers so it doesn't look absurd
+    const maxCap = (char3 * 35) + (char1 * 10);
+
+    const fake = Math.floor(activeHours * growthRate);
+    return fake > maxCap ? maxCap : fake;
+};
+
+const calculateFakeLikes = (id: string, createdAt: string, isFakeOn: boolean) => {
+    if (!isFakeOn || !id || !createdAt) return 0;
+    const ageInHours = Math.max(0, (Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60));
+    
+    const char1 = id.charCodeAt(0) || 10;
+    const char2 = id.charCodeAt(1) || 10;
+
+    // Post organic delay: Likes start coming 1 to 4 hours AFTER posting
+    const startDelay = (char1 % 4) + 1; 
+    if (ageInHours <= startDelay) return 0;
+
+    const activeHours = ageInHours - startDelay;
+    
+    // Growth Rate: 2 to 15 likes per hour
+    const rate = (char2 % 14) + 2; 
+    const cap = (char1 * 25) + (char2 * 5); // Realistic cap per recipe
+
+    const fake = Math.floor(activeHours * rate);
+    return fake > cap ? cap : fake;
+};
 
 // ─── Main Component ────────────────────────────────────────
 export default function ZestlyAdminPage() {
@@ -165,7 +217,7 @@ export default function ZestlyAdminPage() {
       }
       const isFakeOn = settingsData ? settingsData.fake_engagement_enabled : true;
 
-      // Build user rows
+      // Build user rows with Organic Growth Engine
       const formattedUsers: UserRow[] = await Promise.all(
         (profilesData || []).map(async (p: any) => {
           const [{ count: rc }, { count: fc }, { count: fgc }] = await Promise.all([
@@ -176,14 +228,7 @@ export default function ZestlyAdminPage() {
           
           const realFollowers = fc || 0;
           const bonusFollowers = p.bonus_followers || 0;
-
-          // 🚀 UNIQUE FAKE BASE ALGORITHM
-          let baseFake = 0;
-          if (isFakeOn && p.id) {
-              const char1 = p.id.charCodeAt(0) || 10;
-              const char2 = p.id.charCodeAt(1) || 10;
-              baseFake = (char1 * 25) + (char2 * 10);
-          }
+          const engineFollowers = calculateFakeFollowers(p.id, p.created_at, isFakeOn);
 
           return {
             id: p.id,
@@ -195,8 +240,8 @@ export default function ZestlyAdminPage() {
             recipes_count: rc || 0,
             real_followers: realFollowers,
             bonus_followers: bonusFollowers,
-            engine_followers: baseFake,
-            followers_count: realFollowers + bonusFollowers + baseFake,
+            engine_followers: engineFollowers,
+            followers_count: realFollowers + bonusFollowers + engineFollowers,
             is_verified: p.is_verified || false,
             verification_status: p.verification_status || 'none',
             following_count: fgc || 0,
@@ -206,19 +251,27 @@ export default function ZestlyAdminPage() {
         })
       );
 
-      const formattedRecipes: RecipeRow[] = (recipesData || []).map((r: any) => ({
-        id: r.id,
-        name: r.name,
-        author_name: r.author_name || "Chef",
-        type: r.type || "Veg",
-        likes_count: r.likes_count || 0,
-        comments_count: r.comments_data ? r.comments_data.length : 0,
-        calories: r.calories || 0,
-        difficulty: r.difficulty || "Medium",
-        created_at: r.created_at,
-        image_url: r.image_url,
-        emoji: r.emoji || "🍲",
-      }));
+      // Build recipe rows with Organic Likes Engine
+      const formattedRecipes: RecipeRow[] = (recipesData || []).map((r: any) => {
+        const realLikes = r.likes_count || 0;
+        const engineLikes = calculateFakeLikes(r.id, r.created_at, isFakeOn);
+        
+        return {
+          id: r.id,
+          name: r.name,
+          author_name: r.author_name || "Chef",
+          type: r.type || "Veg",
+          real_likes: realLikes,
+          engine_likes: engineLikes,
+          likes_count: realLikes + engineLikes,
+          comments_count: r.comments_data ? r.comments_data.length : 0,
+          calories: r.calories || 0,
+          difficulty: r.difficulty || "Medium",
+          created_at: r.created_at,
+          image_url: r.image_url,
+          emoji: r.emoji || "🍲",
+        };
+      });
 
       // Combined Activity Logs
       const combinedLogs: any[] = [];
@@ -333,15 +386,24 @@ export default function ZestlyAdminPage() {
       await supabase.from("app_settings").update({ fake_engagement_enabled: newMode }).eq("id", 1);
       
       setUsers(users.map(u => {
-          let baseFake = 0;
-          if (newMode) baseFake = (u.id.charCodeAt(0) * 25) + (u.id.charCodeAt(1) * 10);
+          const engineFollowers = calculateFakeFollowers(u.id, u.joined, newMode);
           return { 
               ...u, 
-              engine_followers: baseFake,
-              followers_count: u.real_followers + u.bonus_followers + baseFake 
+              engine_followers: engineFollowers,
+              followers_count: u.real_followers + u.bonus_followers + engineFollowers 
           };
       }));
-      showToast(newMode ? "🚀 Growth Engine ON! Dynamic followers active." : "🛑 Engine OFF! Showing Real + Admin Bonus only.");
+
+      setRecipes(recipes.map(r => {
+          const engineLikes = calculateFakeLikes(r.id, r.created_at, newMode);
+          return {
+              ...r,
+              engine_likes: engineLikes,
+              likes_count: r.real_likes + engineLikes
+          };
+      }));
+
+      showToast(newMode ? "🚀 Growth Engine ON! Organic scaling active." : "🛑 Engine OFF! Showing Real + Admin Bonus only.");
   };
 
   const handleBonusFollowersChange = async (userId: string, newBonusStr: string) => {
@@ -349,13 +411,12 @@ export default function ZestlyAdminPage() {
       const user = users.find(u => u.id === userId);
       if (!user) return;
       
-      let baseFake = 0;
-      if (fakeMode) baseFake = (user.id.charCodeAt(0) * 25) + (user.id.charCodeAt(1) * 10);
+      const engineFollowers = calculateFakeFollowers(user.id, user.joined, fakeMode);
 
       setUsers(users.map(u => u.id === userId ? {
           ...u, 
           bonus_followers: newBonus,
-          followers_count: u.real_followers + newBonus + baseFake
+          followers_count: u.real_followers + newBonus + engineFollowers
       } : u));
 
       await supabase.from("profiles").update({ bonus_followers: newBonus }).eq("id", userId);
@@ -448,7 +509,6 @@ export default function ZestlyAdminPage() {
     { id: "logs", label: "Activity", icon: "📋" },
   ] as const;
 
-  // 🚀 FIXED: WRAPPED ENTIRE RETURN IN A FRAGMENT TO PREVENT SYNTAX ERRORS
   return (
     <>
       <div className="h-screen w-full bg-[#07070a] text-white font-sans selection:bg-orange-500/30 relative overflow-hidden flex flex-col lg:flex-row">
@@ -908,8 +968,8 @@ export default function ZestlyAdminPage() {
                 <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-[2rem] p-6 relative overflow-hidden flex flex-col md:flex-row justify-between items-center gap-6">
                   <div className="absolute right-0 top-0 w-64 h-64 bg-purple-500/20 blur-[80px] pointer-events-none"></div>
                   <div>
-                    <h2 className="text-2xl font-black text-white flex items-center gap-2">Growth Algorithm Engine 🚀</h2>
-                    <p className="text-indigo-200 text-sm mt-1 max-w-md">Turn this ON to artificially boost likes, views, and followers across the app dynamically.</p>
+                    <h2 className="text-2xl font-black text-white flex items-center gap-2">Organic Growth Engine 🚀</h2>
+                    <p className="text-indigo-200 text-sm mt-1 max-w-md">Smart time-based algorithm to artificially scale likes and followers smoothly and realistically.</p>
                   </div>
                   <button onClick={toggleFakeMode} className={`relative w-20 h-10 rounded-full p-1.5 transition-all duration-300 outline-none shrink-0 border shadow-inner cursor-pointer ${fakeMode ? "bg-green-500 border-green-400 shadow-[0_0_20px_#4ade8040]" : "bg-white/10 border-white/5"}`}>
                     <div className={`w-7 h-7 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center text-[10px] font-black ${fakeMode ? "translate-x-10 text-green-500" : "translate-x-0 text-slate-500"}`}>
