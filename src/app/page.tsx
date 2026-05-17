@@ -171,7 +171,7 @@ export default function HomePage() {
             <span className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-bounce shadow-[0_0_5px_#f97316]" style={{ animationDelay: "300ms" }}></span>
           </div>
           <p className="text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em] mt-3">
-            Preparing your kitchen...
+            Powering Up Zestly...
           </p>
         </div>
       </div>
