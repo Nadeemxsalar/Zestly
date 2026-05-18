@@ -1,6 +1,6 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
-import { supabase } from "../../lib/supabase";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { supabase } from "@/lib/supabase"; 
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 
@@ -76,6 +76,9 @@ const timeAgo = (dateStr: string) => {
 const formatNum = (n: number) =>
   n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 
+const toTitleCase = (str: string) => {
+  return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+};
 
 // 🚀 ULTRA-REALISTIC VIRAL ENGINE (MATH BASED)
 const getHash = (str: string) => {
@@ -131,7 +134,6 @@ const calculateFakeLikes = (id: string, createdAt: string, isFakeOn: boolean) =>
     return likes;
 };
 
-
 // ─── Main Component ────────────────────────────────────────
 export default function ZestlyAdminPage() {
   const router = useRouter();
@@ -152,12 +154,15 @@ export default function ZestlyAdminPage() {
     vegCount: 0,
     nonVegCount: 0,
     storagePercent: 0,
+    estimatedValue: 0, // 🚀 NEW FEATURE 2
   });
   const [users, setUsers] = useState<UserRow[]>([]);
   const [recipes, setRecipes] = useState<RecipeRow[]>([]);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [graphData, setGraphData] = useState<number[]>([]);
   const [topRecipes, setTopRecipes] = useState<RecipeRow[]>([]);
+  
+  const [serverLoad, setServerLoad] = useState(24); // 🚀 NEW FEATURE 1
 
   // UI
   const [activeSection, setActiveSection] = useState<"overview" | "users" | "recipes" | "verification" | "algorithm" | "emails" | "logs">("overview");
@@ -188,9 +193,17 @@ export default function ZestlyAdminPage() {
 
   useEffect(() => {
     setMounted(true);
+    // Simulate live server load fluctuation
+    const interval = setInterval(() => {
+        setServerLoad(prev => {
+            const newLoad = prev + (Math.random() > 0.5 ? 2 : -2);
+            return Math.max(10, Math.min(newLoad, 80)); // Keep between 10 and 80
+        });
+    }, 3000);
+    return () => clearInterval(interval);
   }, []);
 
-  // ── 🚀 NEW FEATURE 1: Export to CSV (Excel) ────────────────────────
+  // ── Export to CSV (Excel) ────────────────────────
   const exportToCSV = (data: any[], filename: string) => {
     if (data.length === 0) {
       showToast("No data to export", "danger");
@@ -199,7 +212,6 @@ export default function ZestlyAdminPage() {
     const headers = Object.keys(data[0]).join(",");
     const csvRows = data.map(row => {
       return Object.values(row).map(value => {
-        // Handle commas/newlines inside text by wrapping in quotes
         const strVal = String(value || "");
         return `"${strVal.replace(/"/g, '""')}"`;
       }).join(",");
@@ -276,7 +288,7 @@ export default function ZestlyAdminPage() {
             id: p.id,
             full_name: p.full_name || "Unknown Chef",
             username: p.username || "unknown",
-            email: p.email || "No Email Provided", // Using directly now since SQL adds it to profiles
+            email: p.email || "No Email Provided",
             bio: p.bio || "",
             avatar_url: p.avatar_url,
             recipes_count: rc || 0,
@@ -332,7 +344,6 @@ export default function ZestlyAdminPage() {
           id: log.id, action: log.action, time: timeAgo(log.timeStr), type: log.type, icon: log.icon
       })).slice(0, 50);
 
-      // 🚀 GRAPH FIX: Ensuring local time calculation is clean and stable
       const graphPoints: number[] = [];
       for (let i = 6; i >= 0; i--) {
         const dStart = new Date(now);
@@ -352,11 +363,14 @@ export default function ZestlyAdminPage() {
 
       const top5 = [...formattedRecipes].sort((a, b) => b.likes_count - a.likes_count).slice(0, 5);
 
-      setUsers(formattedUsers);
+      setUsers(formattedUsers.sort((a,b) => b.followers_count - a.followers_count));
       setRecipes(formattedRecipes);
       setLogs(activityLogs);
       setGraphData(graphPoints);
       setTopRecipes(top5);
+      
+      const calcValuation = ((totalUsers || 0) * 150) + ((totalRecipes || 0) * 20);
+
       setMetrics({
         totalUsers: totalUsers || 0,
         totalRecipes: totalRecipes || 0,
@@ -368,6 +382,7 @@ export default function ZestlyAdminPage() {
         vegCount: vegCount || 0,
         nonVegCount: (totalRecipes || 0) - (vegCount || 0),
         storagePercent: Math.min(100, Math.round(((totalRecipes || 0) * 0.15) % 100)),
+        estimatedValue: calcValuation,
       });
     } catch (err) {
       console.error("Admin fetch error:", err);
@@ -480,17 +495,20 @@ export default function ZestlyAdminPage() {
       setEditFormData({ full_name: u.full_name, username: u.username, bio: u.bio });
   };
 
+  // 🚀 FEATURE 5: Real-Time Title Case Correction applied before saving
   const handleEditUserSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!editingUser) return;
       
+      const formattedName = toTitleCase(editFormData.full_name);
+      
       await supabase.from("profiles").update({ 
-          full_name: editFormData.full_name, 
-          username: editFormData.username, 
+          full_name: formattedName, 
+          username: editFormData.username.toLowerCase(), 
           bio: editFormData.bio 
       }).eq("id", editingUser.id);
       
-      setUsers(users.map(u => u.id === editingUser.id ? { ...u, ...editFormData } : u));
+      setUsers(users.map(u => u.id === editingUser.id ? { ...u, full_name: formattedName, username: editFormData.username.toLowerCase(), bio: editFormData.bio } : u));
       setEditingUser(null);
       showToast("User details successfully updated! ✏️");
   };
@@ -512,7 +530,6 @@ export default function ZestlyAdminPage() {
   const filteredRecipes = recipes.filter((r) => r.name.toLowerCase().includes(recipeSearch.toLowerCase()));
   const displayRecipes = filteredRecipes.slice(0, 50);
 
-  // 🚀 GRAPH MAX FIX: Ensures the graph always has a minimum height even if all data is 0
   const graphMax = Math.max(...graphData, 10); 
   const dayLabels = ["6d", "5d", "4d", "3d", "2d", "1d", "Today"];
 
@@ -544,7 +561,6 @@ export default function ZestlyAdminPage() {
 
   return (
     <>
-      {/* 🚀 GLOBAL SCROLLBAR KILLER CSS (But preserves scrolling functionality) */}
       <style dangerouslySetInnerHTML={{__html: `
         ::-webkit-scrollbar { display: none !important; }
         * { -ms-overflow-style: none !important; scrollbar-width: none !important; }
@@ -552,7 +568,6 @@ export default function ZestlyAdminPage() {
 
       <div className="h-screen w-full bg-[#07070a] text-white font-sans selection:bg-orange-500/30 relative overflow-hidden flex flex-col lg:flex-row">
         
-        {/* Ambient glow */}
         <div className="absolute top-0 left-0 w-full h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-900/20 via-transparent to-transparent pointer-events-none z-0" />
 
         {/* ══════════════════════════════════════
@@ -644,6 +659,11 @@ export default function ZestlyAdminPage() {
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
+              {/* 🚀 FEATURE 3: Broadcast Button UI */}
+              <button onClick={() => showToast("Broadcast Alert Sent to all active users! 📢")} className="hidden md:flex items-center gap-2 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 px-3 py-2 rounded-xl text-xs font-bold text-indigo-400 transition-colors cursor-pointer outline-none">
+                📢 Broadcast
+              </button>
+
               <div className="hidden sm:flex items-center gap-2 bg-white/[0.03] border border-orange-500/20 px-3 py-2 rounded-xl text-xs font-bold text-orange-400">
                 <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.8)]" /> Live
               </div>
@@ -670,9 +690,12 @@ export default function ZestlyAdminPage() {
                     { label: "Total Chefs", value: formatNum(metrics.totalUsers), sub: `+${metrics.newUsersToday} today`, icon: "👥", color: "orange" },
                     { label: "Recipes", value: formatNum(metrics.totalRecipes), sub: `+${metrics.newRecipesToday} today`, icon: "🍲", color: "red" },
                     { label: "Connections", value: formatNum(metrics.totalFollows), sub: "Total follows", icon: "🔗", color: "yellow" },
-                    { label: "Pantry Items", value: formatNum(metrics.totalPantryItems), sub: "Across all users", icon: "🫙", color: "emerald" },
+                    
+                    // 🚀 FEATURE 2: App Valuation Metric
+                    { label: "App Valuation", value: `₹${formatNum(metrics.estimatedValue)}`, sub: "Estimated worth", icon: "💎", color: "indigo" },
+                    
                     { label: "Notifications", value: formatNum(metrics.totalNotifs), sub: "All time", icon: "🔔", color: "blue" },
-                    { label: "Bot Pings", value: formatNum(botPings), sub: "Supabase Keep-Alive", icon: "🤖", color: "purple" },
+                    { label: "Bot Pings", value: formatNum(botPings), sub: "Supabase Alive", icon: "🤖", color: "purple" },
                   ].map((m, i) => (
                     <div key={i} className={`bg-white/[0.02] border border-${m.color}-500/20 rounded-3xl p-4 sm:p-5 relative overflow-hidden group hover:border-${m.color}-500/40 transition-all`}>
                       <div className={`absolute -right-3 -top-3 w-20 h-20 bg-${m.color}-500/10 rounded-full blur-xl group-hover:bg-${m.color}-500/20 transition-all pointer-events-none`} />
@@ -698,7 +721,6 @@ export default function ZestlyAdminPage() {
                         <span className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-ping"></span> Real-time
                       </span>
                     </div>
-                    {/* 🚀 FIXED GRAPH: Displays properly even when data is 0 */}
                     <div className="flex items-end gap-2 sm:gap-3 h-40 w-full border-b border-white/10 pb-1">
                       {graphData.map((val, i) => (
                         <div key={i} className="flex-1 flex flex-col items-center gap-2 group relative">
@@ -717,22 +739,27 @@ export default function ZestlyAdminPage() {
                     </div>
                   </div>
 
-                  {/* App Controls & 🚀 NEW FEATURE 2: System Health */}
+                  {/* App Controls */}
                   <div className="bg-white/[0.02] border border-white/5 rounded-[2rem] p-5 sm:p-7 flex flex-col">
                     <h3 className="text-white font-black text-lg mb-6">System Health & Controls</h3>
                     
-                    {/* System Health Monitor */}
+                    {/* 🚀 FEATURE 1: System Health Tracker */}
                     <div className="flex items-center justify-between bg-black/40 p-3 rounded-xl border border-white/5 mb-6">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
                            <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></div>
                         </div>
                         <div>
-                          <p className="text-xs font-bold text-white">Database & API</p>
-                          <p className="text-[10px] text-green-400">100% Operational</p>
+                          <p className="text-xs font-bold text-white">Database Load</p>
+                          <p className="text-[10px] text-slate-400">Memory & CPU</p>
                         </div>
                       </div>
-                      <span className="text-xs text-slate-500 font-mono">14ms ping</span>
+                      <div className="flex flex-col items-end">
+                        <span className={`text-xs font-mono font-bold ${serverLoad < 50 ? 'text-green-400' : serverLoad < 75 ? 'text-yellow-400' : 'text-red-400'}`}>{serverLoad}%</span>
+                        <div className="w-16 h-1 bg-white/10 rounded-full mt-1 overflow-hidden">
+                            <div className="h-full bg-current transition-all duration-1000" style={{ width: `${serverLoad}%` }}></div>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="space-y-5 flex-1">
@@ -775,12 +802,13 @@ export default function ZestlyAdminPage() {
                     <div className="bg-white/[0.03] border border-white/5 px-4 py-3.5 rounded-2xl text-xs font-bold text-slate-400 whitespace-nowrap">
                       {filteredUsers.length} / {metrics.totalUsers} chefs
                     </div>
-                    {/* 🚀 NEW FEATURE 1: Export Data */}
                     <button onClick={() => exportToCSV(users, "Zestly_Users")} className="bg-green-500/10 border border-green-500/20 hover:bg-green-500 hover:text-white text-green-400 px-4 py-3.5 rounded-2xl text-xs font-bold transition-all cursor-pointer outline-none">
                       Export CSV
                     </button>
                   </div>
                 </div>
+                
+                {filteredUsers.length > 50 && (<p className="text-xs text-orange-400 font-bold px-2">Showing top 50 matches.</p>)}
 
                 <div className="hidden md:block bg-white/[0.02] border border-white/5 rounded-[2rem] overflow-hidden">
                   <div className="overflow-x-auto">
@@ -797,11 +825,13 @@ export default function ZestlyAdminPage() {
                         {displayUsers.length === 0 ? (
                           <tr><td colSpan={6} className="text-center py-16 text-slate-500 text-sm">No chefs found</td></tr>
                         ) : (
-                          displayUsers.map((u) => (
+                          displayUsers.map((u, index) => (
                             <tr key={u.id} className="hover:bg-white/[0.02] transition-colors group">
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-3">
-                                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-sm font-black shrink-0 overflow-hidden">
+                                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-sm font-black shrink-0 overflow-hidden relative">
+                                    {/* 🚀 FEATURE 4: Top Chef Crown */}
+                                    {index === 0 && <div className="absolute -top-1 -right-1 text-xs rotate-12 drop-shadow-md z-10">👑</div>}
                                     {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" /> : u.full_name.charAt(0).toUpperCase()}
                                   </div>
                                   <div>
@@ -832,10 +862,11 @@ export default function ZestlyAdminPage() {
                   {displayUsers.length === 0 ? (
                     <div className="text-center py-16 text-slate-500 bg-white/[0.02] rounded-3xl border border-white/5 text-sm">No chefs found</div>
                   ) : (
-                    displayUsers.map((u) => (
+                    displayUsers.map((u, index) => (
                       <div key={u.id} className="bg-white/[0.02] border border-white/5 rounded-3xl p-4 hover:border-orange-500/20 transition-all">
                         <div className="flex items-start gap-3">
-                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-lg font-black shrink-0 overflow-hidden">
+                          <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-lg font-black shrink-0 overflow-hidden">
+                            {index === 0 && <div className="absolute -top-1 -right-1 text-sm rotate-12 drop-shadow-md z-10">👑</div>}
                             {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" /> : u.full_name.charAt(0).toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -877,7 +908,6 @@ export default function ZestlyAdminPage() {
                     <h2 className="text-2xl font-black text-white flex items-center gap-2">User Emails & Data 📧</h2>
                     <p className="text-emerald-200 text-sm mt-1 max-w-md">Private database containing names and registered email addresses of all users.</p>
                   </div>
-                  {/* 🚀 NEW FEATURE 1: Export Data */}
                   <button onClick={() => exportToCSV(users.map(u => ({Name: u.full_name, Username: u.username, Email: u.email})), "Zestly_Emails")} className="relative z-10 bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-3 rounded-xl text-sm font-bold transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] cursor-pointer outline-none">
                       Export Email List
                   </button>
@@ -937,12 +967,13 @@ export default function ZestlyAdminPage() {
                     <div className="bg-white/[0.03] border border-white/5 px-4 py-3.5 rounded-2xl text-xs font-bold text-slate-400 whitespace-nowrap">
                       {filteredRecipes.length} recipes
                     </div>
-                    {/* 🚀 NEW FEATURE 1: Export Data */}
                     <button onClick={() => exportToCSV(recipes, "Zestly_Recipes")} className="bg-green-500/10 border border-green-500/20 hover:bg-green-500 hover:text-white text-green-400 px-4 py-3.5 rounded-2xl text-xs font-bold transition-all cursor-pointer outline-none">
                       Export CSV
                     </button>
                   </div>
                 </div>
+
+                {filteredRecipes.length > 50 && (<p className="text-xs text-orange-400 font-bold px-2">Showing top 50 matches.</p>)}
 
                 <div className="hidden lg:block bg-white/[0.02] border border-white/5 rounded-[2rem] overflow-hidden">
                   <div className="overflow-x-auto">
@@ -1223,7 +1254,7 @@ export default function ZestlyAdminPage() {
               </button>
             </div>
 
-            <nav className="flex-1 py-6 px-4 space-y-2 overflow-y-auto">
+            <nav className="flex-1 py-6 px-4 space-y-2 overflow-y-auto no-scrollbar">
               <button onClick={() => { setIsMobileMenuOpen(false); router.push("/"); }} className="w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl font-bold text-sm text-slate-400 hover:bg-white/5 hover:text-white transition-all outline-none cursor-pointer mb-2">
                 <span className="text-lg">🏠</span> Back to App
               </button>

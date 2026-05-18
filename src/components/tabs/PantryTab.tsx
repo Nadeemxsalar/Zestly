@@ -24,7 +24,7 @@ const analyzeItem = (name: string) => {
   if (lower.match(/apple|banana|orange|fruit/)) return { cat: "Fruits", emoji: "🍎" };
   if (lower.match(/tomato|onion|potato|spinach|veg|carrot|gobi|aloo|matar|capsicum/)) return { cat: "Veggies", emoji: "🥦" };
   if (lower.match(/bread|bun|cake|flour|rice|pasta|oats|atta|dal|wheat/)) return { cat: "Grains", emoji: "🌾" };
-  if (lower.match(/masala|salt|sugar|oil|spice|chilli/)) return { cat: "Spices", emoji: "🧂" };
+  if (lower.match(/masala|salt|sugar|oil|spice|chilli|sauce|soy|vinegar/)) return { cat: "Spices", emoji: "🧂" };
   return { cat: "Staples", emoji: "🥫" };
 };
 
@@ -38,13 +38,16 @@ export default function PantryTab({ user }: PantryTabProps) {
   
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [filter, setFilter] = useState<string>("all");
+  
+  // 🚀 FEATURE 3: Smart Sorting State
+  const [sortBy, setSortBy] = useState<"expiry" | "name" | "value">("expiry");
 
-  // 🚀 ADVANCED: What To Cook States
+  // What To Cook States
   const [mealMode, setMealMode] = useState<"Normal" | "Unique">("Normal");
   const [mealTime, setMealTime] = useState<"Quick" | "Detailed">("Quick");
-  const [suggestedMeal, setSuggestedMeal] = useState<{name: string, desc: string, ingredients: {name: string, emoji: string}[], vibe: string, time: string, cal: number} | null>(null);
+  const [suggestedMeal, setSuggestedMeal] = useState<{name: string, desc: string, ingredients: {name: string, emoji: string}[], vibe: string, time: string, cal: number, cuisine: string} | null>(null);
   
-  // 🔥 PERFECT ROULETTE ANIMATION STATES (Balanced Speed)
+  // PERFECT ROULETTE ANIMATION STATES
   const [isRouletteActive, setIsRouletteActive] = useState(false);
   const [rouletteItems, setRouletteItems] = useState<{name: string, emoji: string}[]>([{name: "?", emoji: "🎲"}, {name: "?", emoji: "🎲"}, {name: "?", emoji: "🎲"}]);
 
@@ -109,15 +112,16 @@ export default function PantryTab({ user }: PantryTabProps) {
     setIsSeeding(false);
   };
 
-  const handleAddItem = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newItemName) return;
+  const handleAddItem = async (e: React.FormEvent, directName?: string) => {
+    if (e) e.preventDefault();
+    const itemName = directName || newItemName;
+    if (!itemName) return;
     
-    const { cat } = analyzeItem(newItemName);
+    const { cat } = analyzeItem(itemName);
     const newExpiryDate = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
     
     const newItemData = {
-      name: newItemName,
+      name: itemName,
       qty: 1,
       unit: newItemUnit,
       category: cat,
@@ -138,9 +142,9 @@ export default function PantryTab({ user }: PantryTabProps) {
         expiryDate: dbItem.expiry_date,
         pricePerUnit: dbItem.price_per_unit
       }, ...items]);
-      showToast(`${newItemName} added to pantry! ✨`);
+      showToast(`${itemName} added to pantry! ✨`);
     }
-    setNewItemName("");
+    if (!directName) setNewItemName("");
   };
 
   const handleUpdateQty = async (id: string, delta: number) => {
@@ -159,7 +163,6 @@ export default function PantryTab({ user }: PantryTabProps) {
     }
   };
 
-  // 🚀 Shopping List Generator
   const exportShoppingList = () => {
     const lowStockItems = items.filter(i => (i.unit === 'Kg' || i.unit === 'Liters') ? i.qty < 1 : i.qty < 2);
     if (lowStockItems.length === 0) {
@@ -176,7 +179,6 @@ export default function PantryTab({ user }: PantryTabProps) {
     showToast("Shopping List copied to clipboard! 📋✅");
   };
 
-  // 🚀 PERFECTLY BALANCED AI ROULETTE LOGIC (1.6s total duration, no hanging)
   const handleSuggestMeal = () => {
     if (items.length < 2) {
         showToast("Add at least 2 items to your pantry first! 🛒");
@@ -187,8 +189,8 @@ export default function PantryTab({ user }: PantryTabProps) {
     setIsRouletteActive(true);
 
     let shuffleCount = 0;
-    const maxShuffles = 20; // 20 spins
-    const intervalSpeed = 80; // 80ms per spin = 1.6 seconds total
+    const maxShuffles = 20; 
+    const intervalSpeed = 80; 
 
     const shuffleInterval = setInterval(() => {
         const randomPicks = [...items].sort(() => 0.5 - Math.random()).slice(0, 3).map(i => ({
@@ -201,43 +203,50 @@ export default function PantryTab({ user }: PantryTabProps) {
         if (shuffleCount >= maxShuffles) {
             clearInterval(shuffleInterval);
             generateFinalMeal(randomPicks);
-            // Close roulette smoothly and show result
             setTimeout(() => setIsRouletteActive(false), 200); 
         }
     }, intervalSpeed); 
   };
 
+  // 🚀 ADVANCED ALGORITHM: Super Dynamic Recipe Generator
   const generateFinalMeal = (selectedIngredients: {name: string, emoji: string}[]) => {
       const i1 = selectedIngredients[0].name;
       const i2 = selectedIngredients[1].name;
+      const optI3 = selectedIngredients[2]?.name || "Spices";
 
-      let recipeName = "";
-      let recipeDesc = "";
-      let vibe = "";
-      let estTime = mealTime === "Quick" ? "15 Min" : "45 Min";
-      let cal = Math.floor(Math.random() * 300) + 200;
+      // Vast arrays for millions of permutations
+      const normalPrefixes = ["Homestyle", "Classic", "Rustic", "15-Minute", "Creamy", "Spicy", "Hearty", "Garlicky", "One-Pot", "Crispy"];
+      const uniquePrefixes = ["Exotic", "Pan-Seared", "Smoked", "Truffle-Infused", "Caramelized", "Zesty", "Sizzling", "Aromatic", "Chef's Special"];
+      const styles = ["Stir-Fry", "Curry", "Risotto", "Bowl", "Skillet", "Tacos", "Glaze", "Bake", "Casserole", "Salad", "Wrap", "Bites", "Mash"];
+      const cuisines = ["Italian", "Desi Fusion", "Mexican", "Asian Street", "Mediterranean", "Thai", "French Style"];
+      const techniques = ["slow-cooked to perfection", "tossed in secret sauces", "garnished with fresh herbs", "pan-roasted for extra crunch", "simmered in a rich broth"];
 
-      if (mealMode === "Normal") {
-          const prefixes = ["Classic", "Homestyle", "Quick", "Everyday", "Traditional"];
-          const suffixes = ["Special", "Mix", "Curry", "Fry", "Bites", "Bowl"];
-          recipeName = `${prefixes[Math.floor(Math.random() * prefixes.length)]} ${i1} & ${i2} ${suffixes[Math.floor(Math.random() * suffixes.length)]}`;
-          recipeDesc = `A comforting and simple everyday recipe made directly from your pantry's ${i1} and ${i2}. Perfect for a homely meal!`;
-          vibe = "Comfort Food 🍲";
-      } else {
-          const prefixes = ["Exotic", "Fusion", "Gourmet", "Creamy", "Smoked", "Pan-Seared"];
-          const suffixes = ["Tart", "Bowl", "Risotto", "Glaze", "Bake", "Delight"];
-          recipeName = `${prefixes[Math.floor(Math.random() * prefixes.length)]} ${i1} & ${i2} ${suffixes[Math.floor(Math.random() * suffixes.length)]}`;
-          recipeDesc = `Try something new today! A premium culinary fusion experience starring your everyday ${i1} and ${i2}.`;
-          vibe = "Masterchef Vibe 👨‍🍳";
-      }
+      const isUnique = mealMode === "Unique";
+      const prefixList = isUnique ? uniquePrefixes : normalPrefixes;
+      
+      const pre = prefixList[Math.floor(Math.random() * prefixList.length)];
+      const style = styles[Math.floor(Math.random() * styles.length)];
+      const cuisine = cuisines[Math.floor(Math.random() * cuisines.length)];
+      const technique = techniques[Math.floor(Math.random() * techniques.length)];
+
+      // Constructing highly attractive dynamic names
+      const recipeName = `${pre} ${i1} & ${i2} ${style}`;
+      
+      const recipeDesc = isUnique 
+        ? `A brilliant ${cuisine} masterpiece! Combining the bold flavors of ${i1} and ${i2}, ${technique}. A true culinary adventure straight from your pantry.`
+        : `Your ultimate comfort food! A simple, warm, and delicious bowl of ${i1} mixed with ${i2}, perfect for a cozy meal at home.`;
+
+      const estTime = mealTime === "Quick" ? "15 Min" : "45 Min";
+      const cal = Math.floor(Math.random() * 400) + 250;
 
       setSuggestedMeal({
           name: recipeName,
           desc: recipeDesc,
-          ingredients: [selectedIngredients[0], selectedIngredients[1], {name: "Zestly Magic Spices", emoji: "✨"}],
-          vibe: vibe,
+          ingredients: [selectedIngredients[0], selectedIngredients[1], selectedIngredients[2]],
+          vibe: isUnique ? "Masterchef Vibe 👨‍🍳" : "Comfort Food 🍲",
           time: estTime,
-          cal: cal
+          cal: cal,
+          cuisine: cuisine
       });
   };
 
@@ -249,50 +258,99 @@ export default function PantryTab({ user }: PantryTabProps) {
       return (daysLeft / 30) * 100;
   };
 
+  // 🚀 FEATURE 1 & 5: Enhanced Stats & Flavor Profiler
   const stats = useMemo(() => {
     const totalValue = items.reduce((acc, item) => acc + (item.qty * item.pricePerUnit), 0);
+    // Calculate money at risk (items expiring in <= 3 days)
+    const riskValue = items.filter(i => getDaysLeft(i.expiryDate) <= 3).reduce((acc, item) => acc + (item.qty * item.pricePerUnit), 0);
     const urgent = items.filter(i => getDaysLeft(i.expiryDate) <= 3).length;
     const lowStock = items.filter(i => (i.unit === 'Kg' || i.unit === 'Liters') ? i.qty < 1 : i.qty < 2).length;
-    return { totalValue, urgent, lowStock };
+
+    // Feature 5: Dominant Flavor Profiler Logic
+    let dominantVibe = "Balanced & Fresh";
+    const counts: Record<string, number> = {};
+    items.forEach(i => counts[i.category] = (counts[i.category] || 0) + 1);
+    
+    if (counts["Meat"] > 2) dominantVibe = "Carnivore's Paradise 🥩";
+    else if (counts["Dairy"] > 3) dominantVibe = "Rich & Creamy 🧀";
+    else if (counts["Spices"] > 4) dominantVibe = "Spicy & Aromatic 🌶️";
+    else if (counts["Veggies"] > 3) dominantVibe = "Green & Healthy 🥦";
+
+    return { totalValue, riskValue, urgent, lowStock, dominantVibe };
   }, [items]);
 
   const categories = useMemo(() => Array.from(new Set(items.map(i => i.category))), [items]);
 
-  const filteredItems = items.filter(item => {
-    if (filter === "urgent") return getDaysLeft(item.expiryDate) <= 3;
-    if (filter === "low") return (item.unit === 'Kg' || item.unit === 'Liters') ? item.qty < 1 : item.qty < 2;
-    if (filter !== "all") return item.category === filter;
-    return true;
-  });
+  // Handle Smart Filtering AND Sorting
+  const filteredItems = useMemo(() => {
+    let result = items.filter(item => {
+        if (filter === "urgent") return getDaysLeft(item.expiryDate) <= 3;
+        if (filter === "low") return (item.unit === 'Kg' || item.unit === 'Liters') ? item.qty < 1 : item.qty < 2;
+        if (filter !== "all") return item.category === filter;
+        return true;
+    });
+
+    // 🚀 FEATURE 3: Apply Smart Sorting
+    if (sortBy === "expiry") {
+        result.sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
+    } else if (sortBy === "name") {
+        result.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (sortBy === "value") {
+        result.sort((a, b) => (b.qty * b.pricePerUnit) - (a.qty * a.pricePerUnit));
+    }
+
+    return result;
+  }, [items, filter, sortBy]);
+
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6 pb-10 relative max-w-full overflow-x-hidden sm:overflow-visible cursor-default selection:bg-orange-500/10">
       
-      <div className="absolute top-[-100px] left-1/2 -translate-x-1/2 w-[150%] h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-100/60 via-slate-50 to-transparent dark:from-orange-500/10 dark:via-[#07070a]/0 dark:to-transparent pointer-events-none -z-10 transition-colors duration-500"></div>
+      <div className="absolute top-[-100px] left-1/2 -translate-x-1/2 w-[150%] h-[500px] bg-gradient-to-b from-orange-100/60 via-slate-50 to-transparent dark:from-orange-500/10 dark:via-[#07070a]/0 dark:to-transparent pointer-events-none -z-10 transition-colors duration-500"></div>
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end px-4 sm:px-1 gap-4 sm:gap-0 pt-2">
         <div>
           <h2 className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tighter mb-1.5 transition-colors">My Pantry</h2>
-          <p className="text-orange-500 font-bold text-sm flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shrink-0 shadow-[0_0_8px_#f9731666]"></span>
-            {isLoadingDB ? "Syncing Cloud..." : `Total Worth: ₹${stats.totalValue.toLocaleString()}`}
-          </p>
+          <div className="flex items-center gap-3">
+              <p className="text-orange-500 font-bold text-sm flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shrink-0 shadow-[0_0_8px_#f9731666]"></span>
+                {isLoadingDB ? "Syncing Cloud..." : `Total Worth: ₹${stats.totalValue.toLocaleString()}`}
+              </p>
+              {/* 🚀 FEATURE 1: Value at Risk Indicator */}
+              {stats.riskValue > 0 && (
+                  <p className="text-red-500 bg-red-500/10 px-2 py-0.5 rounded text-xs font-black" title="Value of items expiring in 3 days">
+                      ₹{stats.riskValue.toLocaleString()} at risk! ⚠️
+                  </p>
+              )}
+          </div>
         </div>
         
-        <div className="flex items-center gap-3 self-end sm:self-auto">
+        <div className="flex items-center gap-3 self-end sm:self-auto w-full sm:w-auto overflow-x-auto no-scrollbar pb-1 sm:pb-0">
           <button 
             onClick={exportShoppingList}
-            className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold text-sm px-4 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-500/20 active:scale-95 transition-all outline-none [-webkit-tap-highlight-color:transparent]"
+            className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold text-sm px-4 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-500/20 active:scale-95 transition-all outline-none [-webkit-tap-highlight-color:transparent] shrink-0"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2v1m-6 9l2 2 4-4"/></svg>
             <span className="hidden sm:inline">Grocery List</span>
           </button>
 
-          <div className="flex bg-white dark:bg-white/5 p-1 rounded-[1rem] border border-slate-200 dark:border-white/10 shadow-[0_4px_15px_#0000000d] dark:shadow-none transition-colors">
-            <button onClick={() => setViewMode("list")} className={`p-2 rounded-xl transition-all outline-none [-webkit-tap-highlight-color:transparent] ${viewMode === "list" ? "bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-white"}`}>
+          {/* 🚀 FEATURE 3: Smart Sort Dropdown */}
+          <div className="relative shrink-0">
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white text-sm font-bold rounded-xl pl-3 pr-8 py-2.5 outline-none cursor-pointer appearance-none shadow-sm dark:shadow-none [-webkit-tap-highlight-color:transparent]">
+                <option value="expiry" className="text-slate-900">Sort: Expiry</option>
+                <option value="name" className="text-slate-900">Sort: Name (A-Z)</option>
+                <option value="value" className="text-slate-900">Sort: Highest Value</option>
+            </select>
+            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </div>
+          </div>
+
+          <div className="flex bg-white dark:bg-white/5 p-1 rounded-xl border border-slate-200 dark:border-white/10 shadow-sm dark:shadow-none transition-colors shrink-0">
+            <button onClick={() => setViewMode("list")} className={`p-2 rounded-lg transition-all outline-none [-webkit-tap-highlight-color:transparent] ${viewMode === "list" ? "bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-white"}`}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
             </button>
-            <button onClick={() => setViewMode("grid")} className={`p-2 rounded-xl transition-all outline-none [-webkit-tap-highlight-color:transparent] ${viewMode === "grid" ? "bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-white"}`}>
+            <button onClick={() => setViewMode("grid")} className={`p-2 rounded-lg transition-all outline-none [-webkit-tap-highlight-color:transparent] ${viewMode === "grid" ? "bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white shadow-sm" : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-white"}`}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
             </button>
           </div>
@@ -302,11 +360,11 @@ export default function PantryTab({ user }: PantryTabProps) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 px-4 sm:px-1">
         
         {/* 🚀 SUPER PREMIUM: What to Cook AI Widget */}
-        <div className="relative border p-[2px] rounded-[2rem] overflow-hidden group shadow-lg">
+        <div className="relative border border-indigo-200 dark:border-indigo-500/30 p-[2px] rounded-[2rem] overflow-hidden group shadow-lg">
           {/* Animated AI Border Glow */}
           <div className="absolute inset-0 bg-[conic-gradient(from_0deg,transparent_0_340deg,white_360deg)] opacity-20 before:absolute before:inset-0 before:bg-[conic-gradient(from_0deg,transparent_0_340deg,white_360deg)] before:animate-[spin_4s_linear_infinite] rounded-[2rem]"></div>
           
-          <div className="bg-linear-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-900/20 border border-indigo-200 dark:border-indigo-500/20 p-5 rounded-[1.9rem] backdrop-blur-xl relative overflow-hidden transition-colors flex flex-col justify-between min-h-[160px] z-10 w-full h-full">
+          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-900/20 border border-indigo-200 dark:border-transparent p-5 rounded-[1.9rem] backdrop-blur-xl relative overflow-hidden transition-colors flex flex-col justify-between min-h-[160px] z-10 w-full h-full">
             <div className="absolute -right-4 -bottom-4 text-7xl opacity-20 group-hover:scale-110 group-hover:-rotate-12 transition-all duration-500 blur-[1px]">🧑‍🍳</div>
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-purple-500/20 blur-3xl rounded-full pointer-events-none group-hover:bg-indigo-500/20 transition-all"></div>
             
@@ -315,8 +373,12 @@ export default function PantryTab({ user }: PantryTabProps) {
                    <h3 className="text-indigo-600 dark:text-indigo-400 text-xs font-black uppercase tracking-widest flex items-center gap-2">
                        What to Cook? <span className="animate-bounce">🤔</span>
                    </h3>
-                   <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">AI Recipe Generator</p>
+                   <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">AI Smart Recipe Engine</p>
                </div>
+               {/* 🚀 FEATURE 4: Scan Fridge Button UI */}
+               <button onClick={() => showToast("Opening AI Camera Scanner... 📷")} className="bg-white dark:bg-white/10 p-2 rounded-xl text-indigo-500 dark:text-indigo-400 hover:scale-110 transition-transform shadow-sm cursor-pointer outline-none" title="Scan Fridge">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+               </button>
             </div>
             
             <div className="flex gap-2 relative z-10 mb-5 mt-2">
@@ -340,7 +402,7 @@ export default function PantryTab({ user }: PantryTabProps) {
 
             <button 
               onClick={handleSuggestMeal}
-              className="relative z-10 w-full text-sm font-black bg-linear-to-r from-indigo-500 via-purple-500 to-fuchsia-500 text-white shadow-[0_4px_20px_#8b5cf666] px-5 py-3.5 rounded-2xl hover:scale-[1.02] active:scale-95 transition-all outline-none [-webkit-tap-highlight-color:transparent] flex items-center justify-center gap-2 overflow-hidden"
+              className="relative z-10 w-full text-sm font-black bg-gradient-to-r from-indigo-500 via-purple-500 to-fuchsia-500 text-white shadow-[0_4px_20px_#8b5cf666] px-5 py-3.5 rounded-2xl hover:scale-[1.02] active:scale-95 transition-all cursor-pointer outline-none [-webkit-tap-highlight-color:transparent] flex items-center justify-center gap-2 overflow-hidden"
             >
               <span className="absolute inset-0 w-full h-full bg-white/20 hover:animate-[ping_1.5s_ease-in-out_infinite] opacity-0 group-hover:opacity-100 rounded-2xl transition-opacity"></span>
               Generate Recipe ✨
@@ -348,63 +410,81 @@ export default function PantryTab({ user }: PantryTabProps) {
           </div>
         </div>
 
-        {/* Nutritional Scanner */}
-        <div className="bg-linear-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-500/20 p-5 rounded-[2rem] backdrop-blur-xl relative overflow-hidden group shadow-sm dark:shadow-none transition-colors">
+        {/* Nutritional Scanner & Profiler */}
+        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-500/20 p-5 rounded-[2rem] backdrop-blur-xl relative overflow-hidden group shadow-sm dark:shadow-none transition-colors">
           <div className="absolute -right-4 -bottom-4 text-6xl opacity-30 dark:opacity-20 group-hover:scale-110 transition-transform duration-500 blur-[1px]">🥑</div>
           <h3 className="text-emerald-600 dark:text-emerald-400 text-xs font-black uppercase tracking-widest mb-1.5">Pantry Vibe</h3>
-          <p className="text-xl font-black text-slate-900 dark:text-white leading-tight">High Protein & Greens</p>
+          
+          {/* 🚀 FEATURE 5: Dynamic Flavor Profiler */}
+          <p className="text-xl font-black text-slate-900 dark:text-white leading-tight">{stats.dominantVibe}</p>
+          
           <div className="flex gap-1.5 mt-5">
              <div className="h-2.5 flex-1 bg-emerald-500 rounded-full shadow-[0_0_10px_#10b98166]"></div>
              <div className="h-2.5 w-1/4 bg-slate-200 dark:bg-slate-600 rounded-full"></div>
              <div className="h-2.5 w-1/4 bg-slate-200 dark:bg-slate-600 rounded-full"></div>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-4 font-bold flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span> You're stocked for healthy meals!
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span> You're stocked and ready to cook!
           </p>
         </div>
       </div>
 
       <div className="relative group z-20 w-full px-4 sm:px-1 mt-2">
-        <div className="absolute -inset-0.5 bg-linear-to-r from-orange-400 to-rose-400 rounded-[2.2rem] blur-lg opacity-0 dark:opacity-20 group-focus-within:opacity-20 dark:group-focus-within:opacity-50 transition duration-500"></div>
-        <form onSubmit={handleAddItem} className="relative bg-white dark:bg-black/60 backdrop-blur-2xl border border-slate-200 dark:border-white/10 p-2 sm:p-2 rounded-[2rem] flex items-center shadow-[0_8px_30px_#0000000d] dark:shadow-2xl w-full transition-all focus-within:border-orange-500/40">
-          <div className="pl-4 pr-2 text-slate-400">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
-          </div>
-          <input 
-            type="text" 
-            value={newItemName} onChange={(e) => setNewItemName(e.target.value)}
-            placeholder="Add pantry item (e.g. Potato)..." 
-            className="flex-1 min-w-[80px] w-full bg-transparent text-slate-900 dark:text-white font-semibold px-2 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm sm:text-base cursor-text"
-          />
-          <div className="relative shrink-0 mr-2">
-            <select value={newItemUnit} onChange={(e) => setNewItemUnit(e.target.value)} className="bg-slate-100 dark:bg-white/5 text-orange-600 dark:text-orange-400 font-extrabold rounded-[1rem] pl-3 pr-7 py-2.5 sm:py-3 outline-none appearance-none min-w-[50px] sm:min-w-[60px] text-xs sm:text-sm cursor-pointer [-webkit-tap-highlight-color:transparent]">
-              <option className="bg-white dark:bg-black text-slate-900 dark:text-white">Kg</option>
-              <option className="bg-white dark:bg-black text-slate-900 dark:text-white">g</option>
-              <option className="bg-white dark:bg-black text-slate-900 dark:text-white">L</option>
-              <option className="bg-white dark:bg-black text-slate-900 dark:text-white">Pcs</option>
-            </select>
-            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-orange-500 dark:text-orange-400">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+        <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-400 to-rose-400 rounded-[2.2rem] blur-lg opacity-0 dark:opacity-20 group-focus-within:opacity-20 dark:group-focus-within:opacity-50 transition duration-500"></div>
+        
+        <div className="relative bg-white dark:bg-black/60 backdrop-blur-2xl border border-slate-200 dark:border-white/10 p-2 sm:p-2 rounded-[2rem] shadow-[0_8px_30px_#0000000d] dark:shadow-2xl transition-all focus-within:border-orange-500/40">
+            <form onSubmit={handleAddItem} className="flex items-center w-full">
+                <div className="pl-4 pr-2 text-slate-400">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+                </div>
+                <input 
+                    type="text" 
+                    value={newItemName} onChange={(e) => setNewItemName(e.target.value)}
+                    placeholder="Add pantry item (e.g. Potato)..." 
+                    className="flex-1 min-w-[80px] w-full bg-transparent text-slate-900 dark:text-white font-semibold px-2 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm sm:text-base cursor-text"
+                />
+                <div className="relative shrink-0 mr-2">
+                    <select value={newItemUnit} onChange={(e) => setNewItemUnit(e.target.value)} className="bg-slate-100 dark:bg-white/5 text-orange-600 dark:text-orange-400 font-extrabold rounded-[1rem] pl-3 pr-7 py-2.5 sm:py-3 outline-none appearance-none min-w-[50px] sm:min-w-[60px] text-xs sm:text-sm cursor-pointer [-webkit-tap-highlight-color:transparent]">
+                    <option className="bg-white dark:bg-black text-slate-900 dark:text-white">Kg</option>
+                    <option className="bg-white dark:bg-black text-slate-900 dark:text-white">g</option>
+                    <option className="bg-white dark:bg-black text-slate-900 dark:text-white">L</option>
+                    <option className="bg-white dark:bg-black text-slate-900 dark:text-white">Pcs</option>
+                    </select>
+                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-orange-500 dark:text-orange-400">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+                </div>
+                <button type="submit" disabled={!newItemName} className="shrink-0 bg-gradient-to-br from-orange-400 to-red-500 text-white font-black p-3.5 sm:p-4 rounded-[1.2rem] sm:rounded-[1.5rem] shadow-[0_4px_15px_#f973164d] hover:scale-105 active:scale-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed outline-none [-webkit-tap-highlight-color:transparent]">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"/></svg>
+                </button>
+            </form>
+
+            {/* 🚀 FEATURE 2: 1-Click Quick Add Chips */}
+            <div className="flex gap-2 overflow-x-auto no-scrollbar mt-3 pl-2">
+                {["Salt 🧂", "Eggs 🥚", "Milk 🥛", "Onion 🧅", "Sugar 🍬"].map(item => {
+                    const cleanName = item.split(" ")[0];
+                    return (
+                        <button key={cleanName} onClick={(e) => handleAddItem(e, cleanName)} className="shrink-0 bg-white/50 dark:bg-white/5 border border-slate-200 dark:border-white/10 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-orange-50 dark:hover:bg-orange-500/10 hover:border-orange-500/30 hover:text-orange-500 transition-colors cursor-pointer outline-none">
+                            + {item}
+                        </button>
+                    )
+                })}
             </div>
-          </div>
-          <button type="submit" disabled={!newItemName} className="shrink-0 bg-linear-to-br from-orange-400 to-red-500 text-white font-black p-3.5 sm:p-4 rounded-[1.2rem] sm:rounded-[1.5rem] shadow-[0_4px_15px_#f973164d] hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed outline-none [-webkit-tap-highlight-color:transparent]">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"/></svg>
-          </button>
-        </form>
+        </div>
       </div>
 
       <div className="flex gap-2.5 overflow-x-auto pb-2.5 w-full px-4 sm:px-1 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-        <button onClick={() => setFilter("all")} className={`snap-start whitespace-nowrap px-5 py-3 rounded-full text-xs font-extrabold transition-all outline-none [-webkit-tap-highlight-color:transparent] ${filter === "all" ? "bg-slate-900 text-white dark:bg-white dark:text-black shadow-[0_4px_15px_#00000026] dark:shadow-md" : "bg-white text-slate-600 border border-slate-200 hover:border-slate-300 dark:bg-white/5 dark:text-slate-400 dark:border-white/10 dark:hover:bg-white/10"}`}>All ({items.length})</button>
-        <button onClick={() => setFilter("urgent")} className={`snap-start whitespace-nowrap px-5 py-3 rounded-full text-xs font-extrabold transition-all flex items-center gap-1.5 border outline-none [-webkit-tap-highlight-color:transparent] ${filter === "urgent" ? "bg-red-500 text-white border-red-500 shadow-[0_4px_15px_#ef44444d]" : "bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"}`}>
+        <button onClick={() => setFilter("all")} className={`snap-start whitespace-nowrap px-5 py-3 rounded-full text-xs font-extrabold transition-all outline-none cursor-pointer [-webkit-tap-highlight-color:transparent] ${filter === "all" ? "bg-slate-900 text-white dark:bg-white dark:text-black shadow-[0_4px_15px_#00000026] dark:shadow-md" : "bg-white text-slate-600 border border-slate-200 hover:border-slate-300 dark:bg-white/5 dark:text-slate-400 dark:border-white/10 dark:hover:bg-white/10"}`}>All ({items.length})</button>
+        <button onClick={() => setFilter("urgent")} className={`snap-start whitespace-nowrap px-5 py-3 rounded-full text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 border outline-none [-webkit-tap-highlight-color:transparent] ${filter === "urgent" ? "bg-red-500 text-white border-red-500 shadow-[0_4px_15px_#ef44444d]" : "bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"}`}>
           <span className="w-2 h-2 rounded-full bg-current animate-pulse"></span> Expiring ({stats.urgent})
         </button>
-        <button onClick={() => setFilter("low")} className={`snap-start whitespace-nowrap px-5 py-3 rounded-full text-xs font-extrabold transition-all flex items-center gap-1.5 border outline-none [-webkit-tap-highlight-color:transparent] ${filter === "low" ? "bg-yellow-500 text-black border-yellow-500 shadow-[0_4px_15px_#eab3084d]" : "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-500/10 dark:text-yellow-500 dark:border-yellow-500/20"}`}>
+        <button onClick={() => setFilter("low")} className={`snap-start whitespace-nowrap px-5 py-3 rounded-full text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 border outline-none [-webkit-tap-highlight-color:transparent] ${filter === "low" ? "bg-yellow-500 text-black border-yellow-500 shadow-[0_4px_15px_#eab3084d]" : "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-500/10 dark:text-yellow-500 dark:border-yellow-500/20"}`}>
           ⚠️ Low ({stats.lowStock})
         </button>
         
         <div className="w-px h-8 bg-slate-200 dark:bg-white/10 shrink-0 mx-1"></div>
         {categories.map((cat, idx) => (
-            <button key={idx} onClick={() => setFilter(cat)} className={`snap-start whitespace-nowrap px-4 py-3 rounded-full text-xs font-extrabold transition-all border outline-none [-webkit-tap-highlight-color:transparent] ${filter === cat ? "bg-slate-900 text-white dark:bg-white dark:text-black" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 dark:bg-white/5 dark:text-slate-400 dark:border-white/10"}`}>
+            <button key={idx} onClick={() => setFilter(cat)} className={`snap-start whitespace-nowrap px-4 py-3 rounded-full text-xs font-extrabold cursor-pointer transition-all border outline-none [-webkit-tap-highlight-color:transparent] ${filter === cat ? "bg-slate-900 text-white dark:bg-white dark:text-black" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 dark:bg-white/5 dark:text-slate-400 dark:border-white/10"}`}>
                 {cat}
             </button>
         ))}
@@ -454,12 +534,12 @@ export default function PantryTab({ user }: PantryTabProps) {
 
                   <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
                     <div className="flex items-center bg-slate-50 dark:bg-black/40 p-1.5 rounded-xl border border-slate-200 dark:border-white/5 flex-1 sm:flex-none justify-center min-w-[110px] shadow-inner dark:shadow-none">
-                      <button onClick={() => handleUpdateQty(item.id, -0.5)} className="w-8 h-8 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all font-black text-lg outline-none [-webkit-tap-highlight-color:transparent] shadow-sm dark:shadow-none">-</button>
+                      <button onClick={() => handleUpdateQty(item.id, -0.5)} className="w-8 h-8 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all font-black text-lg cursor-pointer outline-none [-webkit-tap-highlight-color:transparent] shadow-sm dark:shadow-none">-</button>
                       <span className="w-14 text-center font-black text-slate-900 dark:text-white text-sm">{item.qty}<span className="text-[10px] text-slate-500 font-bold ml-1">{item.unit}</span></span>
-                      <button onClick={() => handleUpdateQty(item.id, 0.5)} className="w-8 h-8 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all font-black text-lg outline-none [-webkit-tap-highlight-color:transparent] shadow-sm dark:shadow-none">+</button>
+                      <button onClick={() => handleUpdateQty(item.id, 0.5)} className="w-8 h-8 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all font-black text-lg cursor-pointer outline-none [-webkit-tap-highlight-color:transparent] shadow-sm dark:shadow-none">+</button>
                     </div>
 
-                    <button className="w-11 h-11 shrink-0 flex items-center justify-center bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 hover:bg-orange-500 hover:text-white rounded-[1rem] transition-all outline-none [-webkit-tap-highlight-color:transparent] shadow-sm" title="Add to Cart">
+                    <button className="w-11 h-11 shrink-0 flex items-center justify-center bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 hover:bg-orange-500 hover:text-white cursor-pointer rounded-[1rem] transition-all outline-none [-webkit-tap-highlight-color:transparent] shadow-sm" title="Quick Cook">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
                     </button>
                   </div>
@@ -477,7 +557,7 @@ export default function PantryTab({ user }: PantryTabProps) {
               <button 
                 onClick={seedDefaultItems} 
                 disabled={isSeeding}
-                className="bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 hover:bg-orange-500 hover:text-white px-6 py-3 rounded-xl font-black transition-all flex items-center justify-center gap-2 mx-auto disabled:opacity-50 outline-none [-webkit-tap-highlight-color:transparent] shadow-sm"
+                className="bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 hover:bg-orange-500 hover:text-white px-6 py-3 rounded-xl cursor-pointer font-black transition-all flex items-center justify-center gap-2 mx-auto disabled:opacity-50 outline-none [-webkit-tap-highlight-color:transparent] shadow-sm"
               >
                 {isSeeding ? (
                   <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div> Syncing...</>
@@ -508,13 +588,14 @@ export default function PantryTab({ user }: PantryTabProps) {
           </div>, document.body
       )}
 
-      {/* 🚀 MODAL 2: What to Cook Generated Premium Recipe Result */}
+      {/* 🚀 MODAL 2: Premium Generated Recipe Result */}
       {suggestedMeal && !isRouletteActive && createPortal(
           <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
               <div className="bg-white dark:bg-[#121216] w-full max-w-sm rounded-[2.5rem] shadow-2xl relative border border-slate-200 dark:border-white/10 animate-in zoom-in-95 overflow-hidden">
                   
-                  <div className="bg-linear-to-br from-indigo-500/20 to-purple-500/20 pt-8 pb-6 px-6 relative flex flex-col items-center border-b border-white/5">
-                      <button onClick={() => setSuggestedMeal(null)} className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center bg-white/50 dark:bg-black/40 rounded-full text-slate-700 dark:text-white hover:bg-white dark:hover:bg-white/10 transition-colors outline-none [-webkit-tap-highlight-color:transparent] backdrop-blur-md z-10 shadow-sm">✕</button>
+                  {/* Premium Header */}
+                  <div className="bg-gradient-to-br from-indigo-500/20 to-purple-500/20 pt-8 pb-6 px-6 relative flex flex-col items-center border-b border-white/5">
+                      <button onClick={() => setSuggestedMeal(null)} className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center cursor-pointer bg-white/50 dark:bg-black/40 rounded-full text-slate-700 dark:text-white hover:bg-white dark:hover:bg-white/10 transition-colors outline-none [-webkit-tap-highlight-color:transparent] backdrop-blur-md z-10 shadow-sm">✕</button>
                       
                       <div className="w-20 h-20 bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-5xl shadow-xl mb-4 border-4 border-white dark:border-[#121216] z-10 relative">
                           👨‍🍳
@@ -523,14 +604,20 @@ export default function PantryTab({ user }: PantryTabProps) {
                           </div>
                       </div>
                       
-                      <span className="bg-white/80 dark:bg-black/50 text-indigo-700 dark:text-indigo-300 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full inline-block mb-2 shadow-sm backdrop-blur-md">
-                          {suggestedMeal.vibe}
-                      </span>
+                      <div className="flex gap-2 mb-2">
+                        <span className="bg-white/80 dark:bg-black/50 text-indigo-700 dark:text-indigo-300 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-sm backdrop-blur-md border border-white/20">
+                            {suggestedMeal.vibe}
+                        </span>
+                        <span className="bg-white/80 dark:bg-black/50 text-purple-700 dark:text-purple-300 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-sm backdrop-blur-md border border-white/20">
+                            {suggestedMeal.cuisine}
+                        </span>
+                      </div>
+
                       <h3 className="text-2xl font-black text-slate-900 dark:text-white leading-tight text-center relative z-10">{suggestedMeal.name}</h3>
                   </div>
 
                   <div className="px-6 py-6 text-center">
-                      <p className="text-slate-600 dark:text-slate-400 text-[13px] font-medium leading-relaxed mb-5">{suggestedMeal.desc}</p>
+                      <p className="text-slate-600 dark:text-slate-400 text-[13px] font-medium leading-relaxed mb-5 italic">"{suggestedMeal.desc}"</p>
                       
                       <div className="flex items-center justify-center gap-3 mb-6">
                           <span className="bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 dark:border-white/5 flex items-center gap-1.5 shadow-inner">
@@ -552,7 +639,7 @@ export default function PantryTab({ user }: PantryTabProps) {
                           </div>
                       </div>
 
-                      <button onClick={() => { setSuggestedMeal(null); showToast("Recipe loaded into Cook Mode! 🍳"); }} className="w-full bg-linear-to-tr from-indigo-500 to-purple-600 text-white font-black py-4 rounded-[1.2rem] shadow-[0_8px_20px_#8b5cf666] active:scale-95 transition-all outline-none [-webkit-tap-highlight-color:transparent] text-sm tracking-wide">
+                      <button onClick={() => { setSuggestedMeal(null); showToast("Recipe loaded into Cook Mode! 🍳"); }} className="w-full bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-black py-4 rounded-[1.2rem] shadow-[0_8px_20px_#8b5cf666] cursor-pointer active:scale-95 transition-all outline-none [-webkit-tap-highlight-color:transparent] text-sm tracking-wide">
                           Let's Cook This! ✨
                       </button>
                   </div>

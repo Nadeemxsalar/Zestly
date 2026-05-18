@@ -29,8 +29,25 @@ export default function HomePage() {
 
   // 🚀 CUSTOM ALERT MODAL STATE
   const [customAlert, setCustomAlert] = useState({ isOpen: false, title: "", message: "", icon: "🔒" });
+  
+  // TOAST STATE (Added for safe alerts)
+  const [toast, setToast] = useState({ isOpen: false, message: "" });
 
-  // 🚀 NAYA CODE: Page load hote hi browser ki memory se purana tab uthao
+  // 🚀 NEW FEATURE STATES
+  const [isOffline, setIsOffline] = useState(false);
+  const [xpCount, setXpCount] = useState(0);
+  
+  // App Install Banner States (PWA Logic)
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [installStatus, setInstallStatus] = useState<"idle" | "installing" | "done">("idle");
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  const showToast = (msg: string) => {
+    setToast({ isOpen: true, message: msg });
+    setTimeout(() => setToast({ isOpen: false, message: "" }), 3000);
+  };
+
+  // Page load hote hi browser ki memory se purana tab uthao
   useEffect(() => {
     setMounted(true);
     if (typeof window !== "undefined") {
@@ -38,10 +55,68 @@ export default function HomePage() {
       if (savedTab) {
         setActiveTab(savedTab);
       }
+
+      // 🚀 Install Banner Next-Day Logic
+      const dismissedAt = localStorage.getItem("zestly_install_dismissed");
+      if (dismissedAt) {
+        const timePassed = Date.now() - parseInt(dismissedAt);
+        const oneDayMs = 24 * 60 * 60 * 1000;
+        if (timePassed < oneDayMs) {
+          setShowInstallBanner(false); 
+        } else {
+          localStorage.removeItem("zestly_install_dismissed");
+          setShowInstallBanner(true); 
+        }
+      } else {
+        setShowInstallBanner(true); 
+      }
+
+      // 🚀 Catch PWA Install Prompt
+      const handleBeforeInstallPrompt = (e: Event) => {
+        e.preventDefault();
+        setDeferredPrompt(e);
+        // Only show banner if we caught the install prompt or if it hasn't been dismissed
+        if (!dismissedAt) setShowInstallBanner(true);
+      };
+      window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+
+      // Network Detector
+      setIsOffline(!navigator.onLine);
+      const handleOnline = () => setIsOffline(false);
+      const handleOffline = () => setIsOffline(true);
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+
+      return () => {
+        window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      };
     }
   }, []);
 
-  // 🚀 FIXED & SUPER SAFE: One and only one setup function
+  // Animated XP Counter
+  useEffect(() => {
+    if (user && mounted) {
+      let currentXp = 0;
+      const targetXp = 120; // In future, fetch this from user profile DB
+      const step = Math.ceil(targetXp / 25);
+      
+      const timer = setInterval(() => {
+        currentXp += step;
+        if (currentXp >= targetXp) {
+          setXpCount(targetXp);
+          clearInterval(timer);
+        } else {
+          setXpCount(currentXp);
+        }
+      }, 30);
+      
+      return () => clearInterval(timer);
+    }
+  }, [user, mounted]);
+
+  // FIXED & SUPER SAFE: One and only one setup function (Vercel Proof)
   useEffect(() => {
     let isMounted = true;
 
@@ -57,10 +132,10 @@ export default function HomePage() {
       }
       
       if (isMounted) {
-        setLoading(false); // UI load ho jayega, black screen hamesha ke liye khatam
+        setLoading(false);
       }
 
-      // 2. Safe OneSignal Setup (Ad-blocker proof)
+      // 2. Safe OneSignal Setup (Ad-blocker proof & Vercel SSR proof)
       try {
         if (typeof window !== "undefined") {
           await OneSignal.init({
@@ -78,7 +153,7 @@ export default function HomePage() {
           }
         }
       } catch (e) {
-        console.log("OneSignal blocked by browser (Brave/Ad-Blocker). App will continue normally.", e);
+        console.log("OneSignal blocked by browser. App will continue normally.");
       }
     };
 
@@ -87,7 +162,7 @@ export default function HomePage() {
     return () => { isMounted = false; };
   }, []);
 
-  // 🚀 Real-time Listener for Bell Icon Updates
+  // Real-time Listener for Bell Icon Updates
   useEffect(() => {
     if (!user) return;
     const channel = supabase.channel('realtime-notifs')
@@ -113,7 +188,6 @@ export default function HomePage() {
     })));
   };
 
-  // 🚀 UPGRADED: Tab change hone par custom title aur narrative ke sath attractive popup setup
   const handleTabClick = (tab: string) => {
     const privateTabs = ["pantry", "shop", "profile"];
     if (!user && privateTabs.includes(tab)) {
@@ -140,6 +214,38 @@ export default function HomePage() {
     }
   };
 
+  // 🚀 REAL ACTUAL APP INSTALL LOGIC (PWA)
+  const handleAppInstall = async () => {
+      if (deferredPrompt) {
+          setInstallStatus("installing");
+          deferredPrompt.prompt();
+          const { outcome } = await deferredPrompt.userChoice;
+          if (outcome === 'accepted') {
+              setInstallStatus("done");
+              setTimeout(() => {
+                  setShowInstallBanner(false);
+                  localStorage.setItem("zestly_install_dismissed", Date.now().toString());
+              }, 1500);
+          } else {
+              setInstallStatus("idle");
+          }
+          setDeferredPrompt(null);
+      } else {
+          // Fallback if prompt is not available (like iOS Safari or already installed)
+          showToast("To install on iOS: Tap Share ⬆️ and select 'Add to Home Screen'.");
+          setInstallStatus("done");
+          setTimeout(() => setShowInstallBanner(false), 2000);
+      }
+  };
+
+  // 🚀 DISMISS BANNER FOR NEXT DAY
+  const handleDismissBanner = () => {
+      setShowInstallBanner(false);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("zestly_install_dismissed", Date.now().toString());
+      }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-[#07070a] transition-colors duration-300 relative overflow-hidden">
@@ -150,11 +256,8 @@ export default function HomePage() {
 
         {/* 🚀 Advanced Multi-Ring Spinner */}
         <div className="relative flex items-center justify-center mb-8">
-          {/* Outer rotating dashed ring */}
           <div className="absolute w-24 h-24 border-2 border-dashed border-orange-500/30 dark:border-orange-500/40 rounded-full animate-[spin_5s_linear_infinite]"></div>
-          {/* Inner fast rotating gradient ring */}
           <div className="absolute w-16 h-16 border-t-2 border-r-2 border-orange-500 rounded-full animate-spin"></div>
-          {/* Center Pulsing Logo Box */}
           <div className="w-12 h-12 bg-gradient-to-tr from-orange-500 to-red-600 rounded-2xl flex items-center justify-center shadow-[0_0_25px_rgba(249,115,22,0.5)] animate-pulse z-10">
             <span className="text-white text-2xl font-black tracking-tighter">Z</span>
           </div>
@@ -192,15 +295,24 @@ export default function HomePage() {
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#07070a] text-slate-900 dark:text-white font-sans selection:bg-orange-500/30 flex flex-col cursor-default transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#07070a] text-slate-900 dark:text-white font-sans selection:bg-orange-500/30 flex flex-col cursor-default transition-colors duration-300 relative">
       
       <div className="fixed top-[-10%] right-[-5%] w-80 h-80 bg-orange-600/10 rounded-full blur-[100px] pointer-events-none z-0"></div>
 
-      {/* --- HEADER --- */}
+      {/* 🚀 FEATURE 2: Offline Detector Banner */}
+      {isOffline && (
+        <div className="w-full bg-red-500 text-white text-[10px] font-bold text-center py-1.5 animate-in slide-in-from-top-4 z-50 relative flex items-center justify-center gap-2">
+          <span className="animate-pulse">⚠️</span> You are offline. Some features may not work.
+        </div>
+      )}
+
+      {/* --- HEADER (z-40) --- */}
       <header className="sticky top-0 z-40 bg-white/85 dark:bg-[#07070a]/85 backdrop-blur-xl border-b border-slate-200 dark:border-white/5 px-5 py-3 flex justify-between items-center transition-colors duration-300 shadow-sm dark:shadow-none">
         
-        <div className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-orange-500 to-red-500 tracking-tighter cursor-pointer" onClick={() => handleTabClick("explore")}>
-           Zestly<span className="text-slate-400 dark:text-white text-sm ml-1 opacity-50">Pro</span>
+        <div className="flex flex-col cursor-pointer" onClick={() => handleTabClick("explore")}>
+            <div className="text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-orange-500 to-red-500 tracking-tighter leading-none mt-1">
+              Zestly<span className="text-slate-400 dark:text-white text-sm ml-1 opacity-50">Pro</span>
+            </div>
         </div>
         
         <div className="flex items-center gap-3.5">
@@ -217,8 +329,9 @@ export default function HomePage() {
                 )}
               </button>
 
+              {/* Animated XP Counter */}
               <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full shadow-[0_0_10px_#eab3084d] cursor-pointer hover:scale-105 transition-transform" onClick={() => handleTabClick("profile")}>
-                ⭐ 120 XP
+                ⭐ {xpCount} XP
               </div>
             </div>
           ) : (
@@ -248,6 +361,27 @@ export default function HomePage() {
           )}
         </div>
       </header>
+
+      {/* 🚀 REAL APP INSTALL BANNER (z-30 so it scrolls UNDER header) */}
+      {mounted && showInstallBanner && !isOffline && (
+        <div className="w-full bg-indigo-500/10 dark:bg-indigo-500/20 border-b border-indigo-500/20 px-4 py-2.5 flex justify-between items-center transition-all animate-in slide-in-from-top-4 z-30 relative">
+          <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-300 text-xs font-bold">
+            <span className="text-base">📱</span> Install Zestly App!
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleAppInstall} 
+              disabled={installStatus !== "idle"}
+              className="text-xs font-bold bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg shadow-sm transition-all outline-none cursor-pointer w-24 flex justify-center disabled:opacity-80"
+            >
+              {installStatus === "idle" && "Install"}
+              {installStatus === "installing" && <span className="animate-pulse">Installing...</span>}
+              {installStatus === "done" && "Done ✅"}
+            </button>
+            <button onClick={handleDismissBanner} className="text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-200 outline-none p-1 font-black cursor-pointer">✕</button>
+          </div>
+        </div>
+      )}
 
       {/* --- MAIN CONTENT --- */}
       <main className="flex-1 pb-[76px] overflow-y-auto relative z-10 px-0 sm:px-8 lg:px-16 xl:px-32">
@@ -292,8 +426,8 @@ export default function HomePage() {
 
       {/* 🚀 NOTIFICATION MODAL PANEL */}
       {mounted && isNotifOpen && createPortal(
-        <div className="fixed inset-0 z-[99999] flex justify-end bg-black/60 dark:bg-black/80 backdrop-blur-sm sm:items-center sm:justify-center transition-all animate-in fade-in">
-          <div className="bg-white dark:bg-[#1c1c1e] w-full sm:w-[450px] h-[85vh] sm:h-[600px] mt-auto sm:mt-0 rounded-t-[2.5rem] sm:rounded-[2rem] flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-bottom-full sm:slide-in-from-right-8 duration-300 border border-slate-200 dark:border-white/10">
+        <div className="fixed inset-0 z-[99999] flex justify-end bg-black/60 dark:bg-black/80 backdrop-blur-sm sm:items-center sm:justify-center transition-all animate-in fade-in" onClick={() => setIsNotifOpen(false)}>
+          <div className="bg-white dark:bg-[#1c1c1e] w-full sm:w-[450px] h-[85vh] sm:h-[600px] mt-auto sm:mt-0 rounded-t-[2.5rem] sm:rounded-[2rem] flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-bottom-full sm:slide-in-from-right-8 duration-300 border border-slate-200 dark:border-white/10" onClick={(e) => e.stopPropagation()}>
             <div className="shrink-0 flex justify-between items-center px-6 py-5 border-b border-slate-100 dark:border-white/10">
               <h3 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Notifications</h3>
               <button onClick={() => setIsNotifOpen(false)} className="cursor-pointer text-slate-500 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 w-9 h-9 rounded-full flex items-center justify-center transition-colors outline-none [-webkit-tap-highlight-color:transparent]">✕</button>
@@ -334,27 +468,23 @@ export default function HomePage() {
         document.body
       )}
 
-      {/* 🚀 NEW: PROFESSIONAL CUSTOM ALERT MODAL */}
+      {/* 🚀 LOGIN REQUIRED CUSTOM ALERT */}
       {mounted && customAlert.isOpen && createPortal(
-        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
-          <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-sm rounded-[2rem] p-6 shadow-2xl border border-slate-200 dark:border-white/10 text-center flex flex-col items-center">
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200" onClick={() => setCustomAlert({ isOpen: false, title: "", message: "", icon: "" })}>
+          <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-sm rounded-[2rem] p-6 shadow-2xl border border-slate-200 dark:border-white/10 text-center flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
             
-            {/* Dynamic Professional Icon */}
             <div className="w-16 h-16 bg-orange-100 dark:bg-orange-500/20 text-orange-500 rounded-full flex items-center justify-center text-3xl mb-4 shadow-inner">
               {customAlert.icon}
             </div>
             
-            {/* Dynamic Professional Title */}
             <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2 tracking-tight">
               {customAlert.title}
             </h3>
             
-            {/* Contextual Message */}
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 font-medium px-2 leading-relaxed">
               {customAlert.message}
             </p>
             
-            {/* Action Buttons */}
             <div className="flex gap-3 w-full">
               <button 
                 onClick={() => setCustomAlert({ isOpen: false, title: "", message: "", icon: "" })} 
@@ -373,6 +503,15 @@ export default function HomePage() {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* TOAST NOTIFICATION PORTAL */}
+      {mounted && toast.isOpen && createPortal(
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100000] pointer-events-none">
+          <div className="bg-slate-900 dark:bg-[#1c1c1e] text-white px-6 py-3.5 rounded-full shadow-lg text-sm font-bold border border-slate-700 dark:border-white/10 whitespace-nowrap animate-in slide-in-from-top-4">
+            {toast.message}
+          </div>
+        </div>, document.body
       )}
 
     </div>
