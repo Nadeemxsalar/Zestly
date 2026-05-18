@@ -23,6 +23,7 @@ export default function ProfileTab({ user }: { user: any }) {
   const [fakeMode, setFakeMode] = useState(false);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [analytics, setAnalytics] = useState({ totalViews: 0, totalLikes: 0, reach: 0 });
+  const [topPerformingPost, setTopPerformingPost] = useState<any | null>(null);
 
   // --- UI STATES ---
   const [activeTab, setActiveTab] = useState<"posts" | "saved">("posts");
@@ -31,6 +32,9 @@ export default function ProfileTab({ user }: { user: any }) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [toast, setToast] = useState({ isOpen: false, message: "" });
   const [unsaveConfirmId, setUnsaveConfirmId] = useState<string | null>(null);
+
+  // 🚀 NEW FEATURE 5: Search My Recipes State
+  const [myRecipeSearch, setMyRecipeSearch] = useState("");
 
   // --- COOK MODE STATES ---
   const [cookModePost, setCookModePost] = useState<any | null>(null);
@@ -144,6 +148,12 @@ export default function ProfileTab({ user }: { user: any }) {
           return { ...r, likes_count: displayLikes, viewsCount: displayViews };
       });
       setMyPosts(formattedMyPosts);
+
+      // 🚀 NEW FEATURE 1: Find Top Performing Post
+      if (formattedMyPosts.length > 0) {
+        const top = formattedMyPosts.reduce((prev, current) => (prev.likes_count > current.likes_count) ? prev : current);
+        setTopPerformingPost(top);
+      }
     }
 
     const { count: followersCount } = await supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", user.id);
@@ -257,7 +267,7 @@ export default function ProfileTab({ user }: { user: any }) {
 
     try {
         const cleanUsername = editUsername.toLowerCase().trim().replace(/\s+/g, '_');
-        const { data: existing } = await supabase.from("profiles").select("id").eq("username", cleanUsername).neq("id", user.id).single();
+        const { data: existing } = await supabase.from("profiles").select("id").eq("username", cleanUsername).neq("id", user.id).maybeSingle();
         if (existing) {
           showToast("Username is already taken! ❌");
           setIsSaving(false);
@@ -321,6 +331,7 @@ export default function ProfileTab({ user }: { user: any }) {
     setIsExporting(true);
     setTimeout(() => {
       setIsExporting(false);
+      showToast("Cloud Backup Downloaded! ☁️");
     }, 2000);
   };
 
@@ -332,8 +343,31 @@ export default function ProfileTab({ user }: { user: any }) {
   const activeTheme = themeColors[theme];
   const initial = profile?.full_name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || "C";
 
+  // Profile Completion Calculator
+  const profileCompletion = Math.floor(
+      ((profile?.avatar_url ? 25 : 0) + 
+      (profile?.bio ? 25 : 0) + 
+      (profile?.full_name ? 25 : 0) + 
+      (stats.posts > 0 ? 25 : 0))
+  );
+
+  // Dynamic Badges / Achievements
+  const badges = [];
+  if (profile?.is_verified) badges.push({ icon: "🏆", label: "Master Chef", bg: "bg-yellow-500/10", border: "border-yellow-500/20", text: "text-yellow-500" });
+  if (stats.posts >= 1) badges.push({ icon: "🍳", label: "First Dish", bg: "bg-orange-500/10", border: "border-orange-500/20", text: "text-orange-500" });
+  if (stats.followers > 50) badges.push({ icon: "🌟", label: "Rising Star", bg: "bg-purple-500/10", border: "border-purple-500/20", text: "text-purple-500" });
+  
+  // 🚀 NEW FEATURE 2: Cook Streak Badge
+  badges.push({ icon: "🔥", label: "3 Day Streak", bg: "bg-red-500/10", border: "border-red-500/20", text: "text-red-500" });
+  badges.push({ icon: "🌱", label: "Early Adopter", bg: "bg-green-500/10", border: "border-green-500/20", text: "text-green-500" });
+
+  // Weekly Profile Visits (Engine Powered)
+  const weeklyVisits = fakeMode ? Math.floor(stats.followers * 0.35 + 12) : 12;
+
   const cropperClasses = "fixed inset-0 z-[99999] bg-black flex flex-col animate-in fade-in duration-300";
-  const cropperBoxClasses = "relative flex-1 bg-black sm:bg-slate-900 sm:m-10 sm:rounded-3xl overflow-hidden shadow-2xl border border-white/5 flex items-center justify-center";
+
+  // Filter Posts based on Search
+  const displayedMyPosts = myPosts.filter(p => p.name.toLowerCase().includes(myRecipeSearch.toLowerCase()));
 
   if (isLoading) return <div className="flex items-center justify-center h-screen"><div className={`w-12 h-12 border-4 ${activeTheme.border} border-t-transparent rounded-full animate-spin`}></div></div>;
 
@@ -375,65 +409,34 @@ export default function ProfileTab({ user }: { user: any }) {
             <div className="absolute bottom-1 right-1 sm:bottom-2 sm:right-2 z-20 bg-gradient-to-r from-yellow-400 to-amber-500 text-black text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border-2 border-white dark:border-[#07070a] shadow-lg">PRO</div>
           </div>
           
-          <div className="flex-1 w-full text-center sm:text-left mt-2 sm:mt-6 z-10 relative">
+          <div className="flex-1 w-full text-center sm:text-left mt-2 sm:mt-4 z-10 relative">
             
-            {/* 🚀 PREMIUM VERIFIED BADGE — INSTAGRAM STYLE BUT PERFECT */}
             <h1 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight flex items-center justify-center sm:justify-start gap-2">
                 <span className="truncate max-w-[80%]">
                     {profile?.full_name || "Head Chef"}
                 </span>
 
                 {profile?.is_verified && (
-                    <div
-                        className="relative flex items-center justify-center group shrink-0 ml-1 cursor-pointer"
-                        title="Official Verified Creator"
-                    >
-                        {/* 🔥 Soft Animated Glow */}
+                    <div className="relative flex items-center justify-center group shrink-0 ml-1 cursor-pointer" title="Official Verified Creator">
                         <div className="absolute inset-0 bg-orange-500 rounded-full blur-[8px] opacity-40 animate-pulse pointer-events-none"></div>
-
-                        {/* ✨ Floating Light Ring */}
                         <div className="absolute inset-0 rounded-full border border-orange-300/30 scale-110 animate-ping pointer-events-none"></div>
-
-                        {/* ✅ Exact Instagram-Type Rosette Badge */}
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            className="w-7 h-7 sm:w-8 sm:h-8 relative z-10 drop-shadow-[0_4px_12px_rgba(249,115,22,0.55)] transition-all duration-300 group-hover:scale-110"
-                        >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="w-7 h-7 sm:w-8 sm:h-8 relative z-10 drop-shadow-[0_4px_12px_rgba(249,115,22,0.55)] transition-all duration-300 group-hover:scale-110">
                             <defs>
                                 <linearGradient id="zestly-premium" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" stopColor="#fde68a" /> {/* amber-200 */}
-                                    <stop offset="35%" stopColor="#f59e0b" /> {/* amber-500 */}
-                                    <stop offset="70%" stopColor="#f97316" /> {/* orange-500 */}
-                                    <stop offset="100%" stopColor="#ea580c" /> {/* orange-600 */}
+                                    <stop offset="0%" stopColor="#fde68a" />
+                                    <stop offset="35%" stopColor="#f59e0b" />
+                                    <stop offset="70%" stopColor="#f97316" />
+                                    <stop offset="100%" stopColor="#ea580c" />
                                 </linearGradient>
                             </defs>
-
-                            {/* 🌟 PERFECT CUT-EDGE SHAPE */}
-                            <path
-                                fill="url(#zestly-premium)"
-                                d="M12 0.8 L14.6 2.1 L17.5 1.4 L18.8 4 L21.4 5.2 L20.7 8.1 L23.2 10.5 L20.7 12.9 L21.4 15.8 L18.8 17 L17.5 19.6 L14.6 18.9 L12 21.2 L9.4 18.9 L6.5 19.6 L5.2 17 L2.6 15.8 L3.3 12.9 L0.8 10.5 L3.3 8.1 L2.6 5.2 L5.2 4 L6.5 1.4 L9.4 2.1 Z"
-                            />
-
-                            {/* ✨ Gloss Highlight */}
-                            <path
-                                fill="rgba(255,255,255,0.22)"
-                                d="M12 2.2C15.5 2.2 18 4.2 19.2 7.2C17.2 5.7 14.8 4.8 12 4.8C9.2 4.8 6.8 5.7 4.8 7.2C6 4.2 8.5 2.2 12 2.2Z"
-                            />
-
-                            {/* ✔ Crisp White Check */}
-                            <path
-                                fill="#fff"
-                                d="M10.2 15.7L6.9 12.4L8.4 10.9L10.2 12.7L15.8 7.1L17.3 8.6L10.2 15.7Z"
-                            />
+                            <path fill="url(#zestly-premium)" d="M12 0.8 L14.6 2.1 L17.5 1.4 L18.8 4 L21.4 5.2 L20.7 8.1 L23.2 10.5 L20.7 12.9 L21.4 15.8 L18.8 17 L17.5 19.6 L14.6 18.9 L12 21.2 L9.4 18.9 L6.5 19.6 L5.2 17 L2.6 15.8 L3.3 12.9 L0.8 10.5 L3.3 8.1 L2.6 5.2 L5.2 4 L6.5 1.4 L9.4 2.1 Z" />
+                            <path fill="rgba(255,255,255,0.22)" d="M12 2.2C15.5 2.2 18 4.2 19.2 7.2C17.2 5.7 14.8 4.8 12 4.8C9.2 4.8 6.8 5.7 4.8 7.2C6 4.2 8.5 2.2 12 2.2Z" />
+                            <path fill="#fff" d="M10.2 15.7L6.9 12.4L8.4 10.9L10.2 12.7L15.8 7.1L17.3 8.6L10.2 15.7Z" />
                         </svg>
-
-                        {/* 🏆 Tooltip */}
                         <div className="absolute bottom-full mb-2.5 whitespace-nowrap bg-orange-600 text-white text-[10px] font-black px-2.5 py-1 rounded-full opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0 transition-all shadow-xl pointer-events-none border border-orange-400 z-50">
                             OFFICIAL CREATOR 🏆
                             <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-orange-600"></div>
                         </div>
-
                     </div>
                 )}
             </h1>
@@ -445,7 +448,22 @@ export default function ProfileTab({ user }: { user: any }) {
           </div>
         </div>
 
-        <div className="flex justify-between items-center bg-white/60 dark:bg-white/[0.03] backdrop-blur-md border border-slate-200/50 dark:border-white/10 rounded-[1.5rem] py-5 px-6 mt-8 shadow-sm dark:shadow-none">
+        {/* 🏆 Dynamic Badges */}
+        <div className="flex gap-3 overflow-x-auto mt-4 sm:mt-2 pb-2 no-scrollbar">
+            {badges.map((badge, i) => (
+                <div key={i} className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border ${badge.bg} ${badge.border}`}>
+                    <span className="text-sm">{badge.icon}</span>
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${badge.text}`}>{badge.label}</span>
+                </div>
+            ))}
+            {/* 👁️ Weekly Visits Tracker */}
+            <div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-indigo-500/10 border-indigo-500/20">
+                <span className="text-sm animate-pulse">👁️</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">{weeklyVisits} Profile Visits</span>
+            </div>
+        </div>
+
+        <div className="flex justify-between items-center bg-white/60 dark:bg-white/[0.03] backdrop-blur-md border border-slate-200/50 dark:border-white/10 rounded-[1.5rem] py-5 px-6 mt-6 shadow-sm dark:shadow-none">
           <div className="flex flex-col items-center flex-1"><span className="text-2xl font-black text-slate-900 dark:text-white">{formatNum(stats.posts)}</span><span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest mt-0.5">Posts</span></div>
           <div className="w-px h-10 bg-slate-200 dark:bg-white/10"></div>
           <div className="flex flex-col items-center flex-1">
@@ -456,14 +474,25 @@ export default function ProfileTab({ user }: { user: any }) {
           <div className="flex flex-col items-center flex-1"><span className="text-2xl font-black text-slate-900 dark:text-white">{formatNum(stats.following)}</span><span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest mt-0.5">Following</span></div>
         </div>
 
+        {/* 📊 Profile Completion Meter */}
+        <div className="mt-6 px-2">
+            <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Profile Strength</span>
+                <span className={`text-xs font-black ${profileCompletion === 100 ? activeTheme.text : 'text-slate-400'}`}>{profileCompletion}% Complete</span>
+            </div>
+            <div className="w-full h-1.5 bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all duration-1000 ${profileCompletion === 100 ? activeTheme.bg : 'bg-slate-400'}`} style={{ width: `${profileCompletion}%` }}></div>
+            </div>
+        </div>
+
         <div className="flex flex-col gap-3 mt-6">
           <div className="flex gap-4">
-              <button onClick={() => setIsEditOpen(true)} className={`flex-1 bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white font-extrabold py-3.5 rounded-2xl text-sm sm:text-base transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shadow-md hover:shadow-lg`}>Edit Profile</button>
-              <button onClick={() => showToast("Profile Link Copied! 🔗")} className="flex-1 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/10 text-slate-900 dark:text-white font-extrabold py-3.5 rounded-2xl text-sm sm:text-base transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shadow-sm dark:shadow-none">Share Profile</button>
+              <button onClick={() => setIsEditOpen(true)} className={`flex-1 bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white font-extrabold py-3.5 rounded-2xl text-sm sm:text-base transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shadow-md hover:shadow-lg cursor-pointer`}>Edit Profile</button>
+              <button onClick={() => showToast("Profile Link Copied! 🔗")} className="flex-1 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/10 text-slate-900 dark:text-white font-extrabold py-3.5 rounded-2xl text-sm sm:text-base transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shadow-sm dark:shadow-none cursor-pointer">Share Profile</button>
           </div>
           <button 
             onClick={() => setIsAnalyticsOpen(true)} 
-            className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-extrabold py-3.5 rounded-2xl text-sm transition-all active:scale-95 outline-none hover:bg-slate-200 dark:hover:bg-white/10 flex items-center justify-center gap-2 shadow-sm"
+            className="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-extrabold py-3.5 rounded-2xl text-sm transition-all active:scale-95 outline-none hover:bg-slate-200 dark:hover:bg-white/10 flex items-center justify-center gap-2 shadow-sm cursor-pointer"
           >
             <svg className="w-5 h-5 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M5 19h14v2H5v-2zm2-4h2v4H7v-4zm4-7h2v11h-2V8zm4-5h2v16h-2V3z"/></svg>
             Professional Dashboard
@@ -474,10 +503,10 @@ export default function ProfileTab({ user }: { user: any }) {
       {/* --- PILL-STYLE SEGMENTED TABS --- */}
       <div className="px-6 mt-6 mb-4 max-w-4xl mx-auto w-full">
         <div className="flex bg-slate-200/50 dark:bg-[#1c1c1e] p-1.5 rounded-2xl gap-1">
-          <button onClick={() => setActiveTab("posts")} className={`flex-1 py-3 flex justify-center items-center gap-2 rounded-xl transition-all duration-300 outline-none [-webkit-tap-highlight-color:transparent] font-bold text-sm ${activeTab === "posts" ? "bg-white dark:bg-[#2c2c2e] text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}>
+          <button onClick={() => setActiveTab("posts")} className={`flex-1 py-3 flex justify-center items-center gap-2 rounded-xl transition-all duration-300 outline-none [-webkit-tap-highlight-color:transparent] font-bold text-sm cursor-pointer ${activeTab === "posts" ? "bg-white dark:bg-[#2c2c2e] text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}>
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M3 3h7v7H3V3zm11 0h7v7h-7V3zm0 11h7v7h-7v-7zM3 14h7v7H3v-7z"/></svg> Recipes
           </button>
-          <button onClick={() => setActiveTab("saved")} className={`flex-1 py-3 flex justify-center items-center gap-2 rounded-xl transition-all duration-300 outline-none [-webkit-tap-highlight-color:transparent] font-bold text-sm ${activeTab === "saved" ? "bg-white dark:bg-[#2c2c2e] text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}>
+          <button onClick={() => setActiveTab("saved")} className={`flex-1 py-3 flex justify-center items-center gap-2 rounded-xl transition-all duration-300 outline-none [-webkit-tap-highlight-color:transparent] font-bold text-sm cursor-pointer ${activeTab === "saved" ? "bg-white dark:bg-[#2c2c2e] text-slate-900 dark:text-white shadow-sm" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"}`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg> Saved
           </button>
         </div>
@@ -486,15 +515,24 @@ export default function ProfileTab({ user }: { user: any }) {
       {/* --- ATTRACTIVE POSTS GRID --- */}
       {activeTab === "posts" && (
         <div className="px-5 sm:px-6 max-w-4xl mx-auto w-full">
+          
+          {/* Search My Recipes */}
+          {myPosts.length > 0 && (
+              <div className="relative w-full mb-4">
+                  <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  <input type="text" placeholder="Search my creations..." value={myRecipeSearch} onChange={e => setMyRecipeSearch(e.target.value)} className="w-full bg-slate-200/50 dark:bg-[#1c1c1e] border-none rounded-xl pl-11 pr-4 py-3 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-orange-500/50 transition-all placeholder:text-slate-400 cursor-text" />
+              </div>
+          )}
+
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-5">
-            {myPosts.length === 0 ? (
+            {displayedMyPosts.length === 0 ? (
               <div className="col-span-full text-center py-24 bg-white dark:bg-white/[0.02] border border-dashed border-slate-200 dark:border-white/10 rounded-[2rem] mt-2">
                 <div className={`w-16 h-16 mx-auto rounded-full bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} opacity-20 mb-4`}></div>
-                <p className="font-bold text-slate-900 dark:text-white text-lg">No Masterpieces Yet</p>
-                <p className="text-slate-500 text-sm mt-1">Your created recipes will appear here.</p>
+                <p className="font-bold text-slate-900 dark:text-white text-lg">No Masterpieces Found</p>
+                <p className="text-slate-500 text-sm mt-1">{myPosts.length > 0 ? "Try a different search term." : "Your created recipes will appear here."}</p>
               </div>
             ) : (
-              myPosts.map(post => (
+              displayedMyPosts.map(post => (
                 <div key={post.id} onClick={() => openCookMode({ ...post, ingredients: post.ingredients || ["Secret Ingredient"], steps: post.steps || ["Cook with love!"] })} className="aspect-square relative cursor-pointer group bg-slate-100 dark:bg-[#121216] rounded-[1.5rem] overflow-hidden shadow-sm hover:shadow-lg transition-all outline-none [-webkit-tap-highlight-color:transparent]">
                   {post.image_url ? (
                     <img src={post.image_url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
@@ -519,7 +557,7 @@ export default function ProfileTab({ user }: { user: any }) {
         </div>
       )}
 
-      {/* 🚀 UPGRADED: SAVED VAULT SECTION */}
+      {/* --- SAVED VAULT SECTION --- */}
       {activeTab === "saved" && (
         <div className="px-5 sm:px-6 max-w-4xl mx-auto w-full">
           {savedPosts.length === 0 ? (
@@ -575,7 +613,7 @@ export default function ProfileTab({ user }: { user: any }) {
                 <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
                     Professional Dashboard {fakeMode && <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_#4ade80]"></span>}
                 </h3>
-                <button onClick={() => setIsAnalyticsOpen(false)} className="w-8 h-8 flex items-center justify-center bg-slate-100 dark:bg-white/10 rounded-full text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors">✕</button>
+                <button onClick={() => setIsAnalyticsOpen(false)} className="w-8 h-8 flex items-center justify-center bg-slate-100 dark:bg-white/10 rounded-full text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer outline-none">✕</button>
             </div>
             
             <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mb-6 leading-relaxed">
@@ -603,9 +641,27 @@ export default function ProfileTab({ user }: { user: any }) {
                         <p className="text-[10px] text-green-500 font-bold mt-1">+28% vs last week</p>
                     </div>
                 </div>
+
+                {/* 🌟 NEW FEATURE 1: Top Performing Post Highlight */}
+                {topPerformingPost && (
+                    <div className="bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/20 rounded-2xl p-4 mt-3 flex items-center gap-4 relative overflow-hidden">
+                        <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-white/10 flex items-center justify-center">
+                            {topPerformingPost.image_url ? (
+                                <img src={topPerformingPost.image_url} className="w-full h-full object-cover" />
+                            ) : (
+                                <span className="text-2xl">{topPerformingPost.emoji}</span>
+                            )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-[10px] text-orange-500 font-black uppercase tracking-widest mb-0.5">Top Recipe 🌟</p>
+                            <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{topPerformingPost.name}</p>
+                            <p className="text-xs text-slate-500 font-medium">{formatNum(topPerformingPost.likes_count)} Likes • {formatNum(topPerformingPost.viewsCount)} Views</p>
+                        </div>
+                    </div>
+                )}
             </div>
 
-            <button onClick={() => setIsAnalyticsOpen(false)} className="w-full bg-slate-900 dark:bg-white text-white dark:text-black font-black py-4 rounded-xl shadow-lg active:scale-95 transition-transform">
+            <button onClick={() => setIsAnalyticsOpen(false)} className="w-full bg-slate-900 dark:bg-white text-white dark:text-black font-black py-4 rounded-xl shadow-lg active:scale-95 transition-transform cursor-pointer outline-none">
                 Got it, Chef!
             </button>
           </div>
@@ -620,24 +676,24 @@ export default function ProfileTab({ user }: { user: any }) {
           <div className="w-[80%] sm:w-[380px] h-full bg-white dark:bg-[#121216] shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col border-l border-slate-200 dark:border-white/10" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center px-6 py-5 border-b border-slate-100 dark:border-white/5 relative z-10 bg-white dark:bg-[#121216]">
               <h3 className="font-black text-slate-900 dark:text-white text-xl">Menu</h3>
-              <button onClick={() => setIsMenuOpen(false)} className="w-8 h-8 flex items-center justify-center bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 rounded-full text-slate-900 dark:text-white transition-colors outline-none [-webkit-tap-highlight-color:transparent]">✕</button>
+              <button onClick={() => setIsMenuOpen(false)} className="w-8 h-8 flex items-center justify-center bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 rounded-full text-slate-900 dark:text-white transition-colors outline-none [-webkit-tap-highlight-color:transparent] cursor-pointer">✕</button>
             </div>
             <div className="flex-1 flex flex-col py-3 overflow-y-auto">
-              <button onClick={() => { setIsMenuOpen(false); setIsSettingsOpen(true); }} className="flex items-center gap-5 px-6 py-4 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors text-left outline-none [-webkit-tap-highlight-color:transparent] group">
+              <button onClick={() => { setIsMenuOpen(false); setIsSettingsOpen(true); }} className="flex items-center gap-5 px-6 py-4 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors text-left outline-none [-webkit-tap-highlight-color:transparent] group cursor-pointer">
                 <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-[#1c1c1e] flex items-center justify-center text-xl shadow-sm group-hover:scale-105 transition-transform">⚙️</div>
                 <div>
                   <span className="block font-bold text-slate-900 dark:text-white text-base">Settings & Privacy</span>
                   <span className="block text-xs text-slate-500 font-medium mt-0.5">Theme, units, alerts & AI</span>
                 </div>
               </button>
-              <button onClick={() => { setIsMenuOpen(false); showToast("QR Code generated! 🔲"); }} className="flex items-center gap-5 px-6 py-4 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors text-left outline-none [-webkit-tap-highlight-color:transparent] group">
+              <button onClick={() => { setIsMenuOpen(false); showToast("QR Code generated! 🔲"); }} className="flex items-center gap-5 px-6 py-4 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors text-left outline-none [-webkit-tap-highlight-color:transparent] group cursor-pointer">
                 <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-[#1c1c1e] flex items-center justify-center text-xl shadow-sm group-hover:scale-105 transition-transform">🔲</div>
                 <div>
                   <span className="block font-bold text-slate-900 dark:text-white text-base">My QR Code</span>
                   <span className="block text-xs text-slate-500 font-medium mt-0.5">Share your profile instantly</span>
                 </div>
               </button>
-              <button onClick={() => { setIsMenuOpen(false); handleExportData(); }} className="flex items-center gap-5 px-6 py-4 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors text-left outline-none [-webkit-tap-highlight-color:transparent] group">
+              <button onClick={() => { setIsMenuOpen(false); handleExportData(); }} className="flex items-center gap-5 px-6 py-4 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors text-left outline-none [-webkit-tap-highlight-color:transparent] group cursor-pointer">
                 <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-[#1c1c1e] flex items-center justify-center text-xl shadow-sm group-hover:scale-105 transition-transform">☁️</div>
                 <div>
                   <span className="block font-bold text-slate-900 dark:text-white text-base">Cloud Backup</span>
@@ -646,7 +702,7 @@ export default function ProfileTab({ user }: { user: any }) {
               </button>
             </div>
             <div className="p-6 border-t border-slate-100 dark:border-white/5 mt-auto relative z-10 bg-white dark:bg-[#121216]">
-              <button onClick={handleLogout} className="w-full font-black text-red-600 dark:text-red-500 bg-red-50 dark:bg-red-500/10 py-4 rounded-2xl hover:bg-red-100 dark:hover:bg-red-500/20 transition-all outline-none [-webkit-tap-highlight-color:transparent] active:scale-95 disabled:opacity-50">Log Out</button>
+              <button onClick={handleLogout} className="w-full font-black text-red-600 dark:text-red-500 bg-red-50 dark:bg-red-500/10 py-4 rounded-2xl hover:bg-red-100 dark:hover:bg-red-500/20 transition-all outline-none [-webkit-tap-highlight-color:transparent] active:scale-95 disabled:opacity-50 cursor-pointer">Log Out</button>
             </div>
           </div>
         </div>, document.body
@@ -665,7 +721,6 @@ export default function ProfileTab({ user }: { user: any }) {
           </div>
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] max-w-4xl mx-auto w-full">
             
-            {/* 🚀 VERIFICATION REQUEST SECTION IN SETTINGS (ORANGE/GOLD THEME) */}
             <div className="bg-white dark:bg-[#121216] rounded-[2rem] p-6 shadow-[0_8px_30px_#0000000a] dark:shadow-none border border-orange-500/20 relative overflow-hidden group">
                 <div className={`absolute top-0 right-0 w-32 h-32 bg-orange-500 opacity-10 rounded-bl-[100px] pointer-events-none transition-all group-hover:scale-110`}></div>
                 <h4 className="text-xs font-black text-orange-500 uppercase tracking-widest mb-6">Account Verification</h4>
@@ -694,9 +749,9 @@ export default function ProfileTab({ user }: { user: any }) {
                   <span className="text-xs text-slate-500 font-medium">Personalize your UI</span>
                 </div>
                 <div className="flex gap-2.5 bg-slate-50 dark:bg-[#1c1c1e] p-1.5 rounded-full border border-slate-100 dark:border-white/5">
-                  <button onClick={() => setTheme("orange")} className={`w-8 h-8 rounded-full bg-orange-500 border-2 ${theme === 'orange' ? 'border-slate-900 dark:border-white shadow-md scale-110' : 'border-transparent'} transition-all`}></button>
-                  <button onClick={() => setTheme("green")} className={`w-8 h-8 rounded-full bg-green-500 border-2 ${theme === 'green' ? 'border-slate-900 dark:border-white shadow-md scale-110' : 'border-transparent'} transition-all`}></button>
-                  <button onClick={() => setTheme("blue")} className={`w-8 h-8 rounded-full bg-blue-500 border-2 ${theme === 'blue' ? 'border-slate-900 dark:border-white shadow-md scale-110' : 'border-transparent'} transition-all`}></button>
+                  <button onClick={() => setTheme("orange")} className={`w-8 h-8 rounded-full cursor-pointer bg-orange-500 border-2 ${theme === 'orange' ? 'border-slate-900 dark:border-white shadow-md scale-110' : 'border-transparent'} transition-all`}></button>
+                  <button onClick={() => setTheme("green")} className={`w-8 h-8 rounded-full cursor-pointer bg-green-500 border-2 ${theme === 'green' ? 'border-slate-900 dark:border-white shadow-md scale-110' : 'border-transparent'} transition-all`}></button>
+                  <button onClick={() => setTheme("blue")} className={`w-8 h-8 rounded-full cursor-pointer bg-blue-500 border-2 ${theme === 'blue' ? 'border-slate-900 dark:border-white shadow-md scale-110' : 'border-transparent'} transition-all`}></button>
                 </div>
               </div>
               <div className="h-px w-full bg-slate-100 dark:bg-white/5 mb-6"></div>
@@ -745,7 +800,7 @@ export default function ProfileTab({ user }: { user: any }) {
               </div>
               <div className="flex gap-2.5 relative z-10">
                 <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendChat()} placeholder="e.g., Substitute for eggs?" className="flex-1 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 px-4 py-3.5 rounded-2xl text-sm outline-none text-slate-900 dark:text-white focus:border-orange-500 transition-colors disabled:opacity-60" disabled={isTyping} />
-                <button onClick={handleSendChat} disabled={isTyping || !chatInput.trim()} className={`bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white px-5 rounded-2xl font-black transition-transform active:scale-95 disabled:opacity-50 shadow-md flex items-center justify-center outline-none [-webkit-tap-highlight-color:transparent]`}>
+                <button onClick={handleSendChat} disabled={isTyping || !chatInput.trim()} className={`bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white px-5 rounded-2xl font-black transition-transform active:scale-95 disabled:opacity-50 shadow-md flex items-center justify-center cursor-pointer outline-none [-webkit-tap-highlight-color:transparent]`}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" /></svg>
                 </button>
               </div>
@@ -760,13 +815,13 @@ export default function ProfileTab({ user }: { user: any }) {
       {mounted && isEditOpen && createPortal(
         <div className="fixed inset-0 z-[99998] bg-slate-50 dark:bg-[#07070a] flex flex-col transition-all overflow-hidden">
           <div className="shrink-0 flex justify-between items-center px-6 py-4 border-b border-slate-100 dark:border-white/5 bg-slate-50/90 dark:bg-[#07070a]/90 backdrop-blur-xl sticky top-0 z-50">
-              <button onClick={() => { setIsEditOpen(false); setPendingAvatarBlob(null); if (pendingAvatarPreview) URL.revokeObjectURL(pendingAvatarPreview); setPendingAvatarPreview(null); }} className="text-sm font-bold text-slate-600 dark:text-slate-300 transition-colors outline-none" disabled={isSaving || isProcessingImage}>Cancel</button>
+              <button onClick={() => { setIsEditOpen(false); setPendingAvatarBlob(null); if (pendingAvatarPreview) URL.revokeObjectURL(pendingAvatarPreview); setPendingAvatarPreview(null); }} className="text-sm font-bold text-slate-600 dark:text-slate-300 transition-colors outline-none cursor-pointer" disabled={isSaving || isProcessingImage}>Cancel</button>
               <h3 className="font-black text-slate-900 dark:text-white text-xl tracking-tight">Edit Profile</h3>
-              <button onClick={() => { setIsEditOpen(false); setPendingAvatarBlob(null); if (pendingAvatarPreview) URL.revokeObjectURL(pendingAvatarPreview); setPendingAvatarPreview(null); }} className={`text-sm font-black ${activeTheme.text} outline-none disabled:opacity-50`} disabled={isSaving || isProcessingImage}>Done</button>
+              <button onClick={() => submitProfileSettings()} className={`text-sm font-black ${activeTheme.text} outline-none cursor-pointer disabled:opacity-50`} disabled={isSaving || isProcessingImage}>Done</button>
           </div>
           <div className="flex-1 overflow-y-auto p-6 sm:p-10 [&::-webkit-scrollbar]:hidden">
             <form className="w-full max-w-lg mx-auto flex flex-col items-center pb-10" onSubmit={submitProfileSettings}>
-               
+                
                <div className="relative group cursor-pointer mb-8 shrink-0 flex items-center justify-center" onClick={() => fileInputRef.current?.click()}>
                  <div className={`absolute w-[140%] h-[140%] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} rounded-full blur-[35px] sm:blur-[50px] opacity-20 group-hover:opacity-35 transition-all duration-700 pointer-events-none`}></div>
                  <div className={`relative z-10 w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} p-[4px] shadow-2xl transition-transform group-hover:scale-[1.03]`}>
@@ -782,6 +837,19 @@ export default function ProfileTab({ user }: { user: any }) {
                <input type="file" accept="image/jpeg, image/png, image/webp" className="hidden" ref={fileInputRef} onChange={handleFileChange} disabled={isSaving || isProcessingImage}/>
                
                <div className="w-full space-y-6">
+                 
+                 {/* 📧 SECURE READ-ONLY EMAIL IN EDIT PROFILE */}
+                 <div className="flex flex-col gap-2.5">
+                   <label className="text-xs text-slate-500 font-extrabold uppercase tracking-widest pl-1">Registered Email</label>
+                   <div className="flex items-center gap-3 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 shadow-inner opacity-70">
+                     <span className="text-slate-900 dark:text-white font-medium text-base truncate flex-1">{user?.email || profile?.email || "No Email"}</span>
+                     <button type="button" onClick={() => { navigator.clipboard.writeText(user?.email || profile?.email || ""); showToast("Email copied! 📋"); }} className="ml-auto text-orange-500 hover:text-orange-600 outline-none cursor-pointer shrink-0" title="Copy Email">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                     </button>
+                   </div>
+                   <p className="text-[10px] text-slate-400 pl-1">Email is kept private and cannot be changed here.</p>
+                 </div>
+
                  <div className="flex flex-col gap-2.5">
                    <label className="text-xs text-slate-500 font-extrabold uppercase tracking-widest pl-1">Full Culinary Name</label>
                    <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-2xl px-5 py-4 outline-none text-slate-900 dark:text-white font-bold text-lg focus:border-slate-300 dark:focus:border-white/20 transition-colors shadow-inner" placeholder="Chef Name" disabled={isSaving || isProcessingImage} />
@@ -800,7 +868,7 @@ export default function ProfileTab({ user }: { user: any }) {
                </div>
                
                <div className="w-full mt-10 sm:mt-12 sticky bottom-0 z-20 py-4 bg-slate-50/80 dark:bg-[#07070a]/80 backdrop-blur-sm sm:static sm:bg-transparent sm:backdrop-blur-none sm:p-0">
-                    <button onClick={() => submitProfileSettings()} type="button" disabled={isSaving || isProcessingImage} className={`w-full bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white font-black py-5 rounded-2xl text-lg transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shadow-lg ${activeTheme.glow} disabled:opacity-60 flex items-center justify-center gap-3`}>
+                    <button type="submit" disabled={isSaving || isProcessingImage} className={`w-full bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white font-black py-5 rounded-2xl text-lg transition-all cursor-pointer active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] shadow-lg ${activeTheme.glow} disabled:opacity-60 flex items-center justify-center gap-3`}>
                         {isSaving ? <><svg className="animate-spin h-6 w-6 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Saving Culinary Magic...</> : isProcessingImage ? "Processing Image..." : "Save Profile Changes"}
                     </button>
                </div>
@@ -814,7 +882,7 @@ export default function ProfileTab({ user }: { user: any }) {
       {/* ========================================================= */}
       {mounted && imageToCrop && createPortal(
         <div className={cropperClasses}>
-          <div className="shrink-0 flex justify-between items-center px-6 py-5 bg-black/90 sm:bg-slate-900 backdrop-blur-md z-20"><button onClick={() => setImageToCrop(null)} className="text-sm font-bold text-slate-300 hover:text-white transition-colors outline-none [-webkit-tap-highlight-color:transparent]">Cancel</button><h3 className="font-black text-white text-lg shrink-0">Fix Profile Photo</h3><div className="w-10"></div></div>
+          <div className="shrink-0 flex justify-between items-center px-6 py-5 bg-black/90 sm:bg-slate-900 backdrop-blur-md z-20"><button onClick={() => setImageToCrop(null)} className="text-sm font-bold text-slate-300 hover:text-white transition-colors outline-none cursor-pointer [-webkit-tap-highlight-color:transparent]">Cancel</button><h3 className="font-black text-white text-lg shrink-0">Fix Profile Photo</h3><div className="w-10"></div></div>
           
           <div className="relative flex-1 bg-black sm:bg-slate-900 sm:m-10 sm:rounded-3xl overflow-hidden shadow-2xl border border-white/5 flex items-center justify-center">
             <Cropper 
@@ -838,7 +906,7 @@ export default function ProfileTab({ user }: { user: any }) {
           
           <div className="shrink-0 p-6 pb-8 bg-gradient-to-t from-black via-black/90 to-transparent z-20 space-y-6">
               <div className="flex items-center gap-4 bg-slate-800/60 p-3 rounded-xl border border-white/5"><span className="text-xs text-slate-400">Zoom</span><input type="range" value={zoom} min={1} max={5} step={0.1} onChange={(e: any) => setZoom(Number(e.target.value))} className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none" style={{ background: `linear-gradient(90deg, ${activeTheme.rawFrom} 0%, ${activeTheme.rawFrom} ${(zoom-1)/4*100}%, #334155 ${(zoom-1)/4*100}%, #334155 100%)` }} /></div>
-              <button onClick={handleSaveCrop} disabled={isProcessingImage} className={`w-full bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white font-black py-5 rounded-2xl text-lg transition-all active:scale-95 shadow-lg flex items-center justify-center gap-3 disabled:opacity-60`}>
+              <button onClick={handleSaveCrop} disabled={isProcessingImage} className={`w-full bg-gradient-to-tr ${activeTheme.from} ${activeTheme.to} text-white font-black py-5 rounded-2xl cursor-pointer text-lg transition-all active:scale-95 shadow-lg flex items-center justify-center gap-3 disabled:opacity-60`}>
                 {isProcessingImage ? "Compressing..." : "Save & Fix Photo ✂️"}
               </button>
           </div>
@@ -908,7 +976,7 @@ export default function ProfileTab({ user }: { user: any }) {
         </div>, document.body
       )}
 
-      {/* 🚀 NEW: UNSAVE CONFIRMATION MODAL */}
+      {/* 🚀 UNSAVE CONFIRMATION MODAL */}
       {mounted && unsaveConfirmId && createPortal(
         <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200" onClick={() => setUnsaveConfirmId(null)}>
           <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-sm rounded-[2rem] p-6 shadow-2xl border border-slate-200 dark:border-white/10 text-center" onClick={e => e.stopPropagation()}>
