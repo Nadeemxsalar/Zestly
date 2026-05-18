@@ -90,60 +90,75 @@ const getHash = (str: string) => {
   return Math.abs(hash);
 };
 
-// 🔥 UPDATED: STRICT DELAY & GRADUAL GROWTH ALGORITHM
+// 🛑 FIXED: BULLETPROOF STRICT ZERO DELAY ALGORITHM
 const calculateFakeFollowers = (id: string, createdAt: string, isFakeOn: boolean) => {
     if (!isFakeOn || !id || !createdAt) return 0;
-    const ageInHours = Math.max(0, (Date.now() - new Date(createdAt).getTime()) / 3600000);
+    
+    const now = Date.now();
+    const createdTime = new Date(createdAt).getTime();
+    
+    // Safety check against future dates (timezone bugs)
+    if (createdTime > now) return 0;
+
+    const ageInMinutes = Math.floor((now - createdTime) / 60000);
+
+    // 🛑 STRICT LOCK: Naya account banne ke 180 minutes (3 hours) tak STRICTLY ZERO followers!
+    const delayMinutes = 180; 
+    if (ageInMinutes <= delayMinutes) {
+        return 0; 
+    }
+
+    // Uske baad growth natural tareeke se shuru hogi (0 se badhna start hoga)
+    const activeHours = (ageInMinutes - delayMinutes) / 60;
     
     const hash = getHash(id);
-    
-    // Strict Lock: Account must be at least 2 to 3 hours old
-    const strictDelay = 2 + (hash % 2); 
-    if (ageInHours < strictDelay) return 0; // Exactly 0 before delay passes
-
-    // Time passed AFTER the strict delay
-    const activeHours = ageInHours - strictDelay;
-    
-    // Max cap logic
     const tierHash = hash % 100;
+    
     let maxCap;
     if (tierHash < 50) maxCap = 150 + (hash % 300); // 150 to 450 total
     else if (tierHash < 85) maxCap = 500 + (hash % 1500); // 500 to 2000 total
     else maxCap = 2000 + (hash % 5000); // Rare viral accounts: 2000 to 7000
 
-    // Speed Factor: Higher means slower growth. It will take days to reach max cap.
     const speedFactor = 48 + (hash % 72); 
     
-    // Exponential curve: starts very slow (e.g., 5, 20, 80, 250) and smooths out.
+    // Exponential curve
     const followers = Math.floor(maxCap * (1 - Math.exp(-activeHours / speedFactor)));
     
-    return followers;
+    return followers > 0 ? followers : 0; // Final safety net so it never bugs out
 };
 
-// 🔥 UPDATED: STRICT DELAY & GRADUAL LIKES ALGORITHM
+// 🛑 FIXED: BULLETPROOF LIKES ALGORITHM
 const calculateFakeLikes = (id: string, createdAt: string, isFakeOn: boolean) => {
     if (!isFakeOn || !id || !createdAt) return 0;
-    const ageInHours = Math.max(0, (Date.now() - new Date(createdAt).getTime()) / 3600000);
+    
+    const now = Date.now();
+    const createdTime = new Date(createdAt).getTime();
+
+    if (createdTime > now) return 0;
+
+    const ageInMinutes = Math.floor((now - createdTime) / 60000);
+
+    // 🛑 STRICT LOCK: Nayi post ke 120 minutes (2 hours) tak STRICTLY ZERO likes!
+    const delayMinutes = 120;
+    if (ageInMinutes <= delayMinutes) {
+        return 0;
+    }
+
+    const activeHours = (ageInMinutes - delayMinutes) / 60;
     
     const hash = getHash(id);
-    
-    // Strict Lock: Post must be at least 1 to 2 hours old (Likes start slightly faster than followers)
-    const strictDelay = 1 + (hash % 2); 
-    if (ageInHours < strictDelay) return 0; // Exactly 0 before delay
-
-    const activeHours = ageInHours - strictDelay;
-    
     const tierHash = hash % 100;
+    
     let maxCap;
     if (tierHash < 60) maxCap = 40 + (hash % 100); // 40 to 140 likes
     else if (tierHash < 90) maxCap = 200 + (hash % 400); // 200 to 600 likes
     else maxCap = 800 + (hash % 2000); // Viral posts: 800 to 2800
 
-    const speedFactor = 24 + (hash % 48); // Reaches mostly full potential in 1 to 3 days
+    const speedFactor = 24 + (hash % 48); 
     
     const likes = Math.floor(maxCap * (1 - Math.exp(-activeHours / speedFactor)));
 
-    return likes;
+    return likes > 0 ? likes : 0;
 };
 
 // ─── Main Component ────────────────────────────────────────
