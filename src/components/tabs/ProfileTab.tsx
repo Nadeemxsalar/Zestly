@@ -7,6 +7,50 @@ import { createPortal } from "react-dom";
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from "@/lib/cropUtils";
 
+// 🚀 ZESTLY VIRAL ENGINE ALGORITHM (Strict Delays)
+const getHash = (str: string) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+};
+
+const calculateFakeFollowers = (id: string, createdAt: string, isFakeOn: boolean) => {
+    if (!isFakeOn || !id || !createdAt) return 0;
+    const now = Date.now();
+    const createdTime = new Date(createdAt).getTime();
+    if (createdTime > now) return 0;
+    
+    const ageInMinutes = Math.floor((now - createdTime) / 60000);
+    if (ageInMinutes <= 180) return 0; // 🛑 STRICT 3 HOUR DELAY (180 mins)
+
+    const activeHours = (ageInMinutes - 180) / 60;
+    const hash = getHash(id);
+    let maxCap = (hash % 100 < 50) ? 150 + (hash % 300) : (hash % 100 < 85) ? 500 + (hash % 1500) : 2000 + (hash % 5000);
+    const speedFactor = 48 + (hash % 72);
+    const followers = Math.floor(maxCap * (1 - Math.exp(-activeHours / speedFactor)));
+    return followers > 0 ? followers : 0;
+};
+
+const calculateFakeLikes = (id: string, createdAt: string, isFakeOn: boolean) => {
+    if (!isFakeOn || !id || !createdAt) return 0;
+    const now = Date.now();
+    const createdTime = new Date(createdAt).getTime();
+    if (createdTime > now) return 0;
+    
+    const ageInMinutes = Math.floor((now - createdTime) / 60000);
+    if (ageInMinutes <= 120) return 0; // 🛑 STRICT 2 HOUR DELAY (120 mins)
+
+    const activeHours = (ageInMinutes - 120) / 60;
+    const hash = getHash(id);
+    let maxCap = (hash % 100 < 60) ? 40 + (hash % 100) : (hash % 100 < 90) ? 200 + (hash % 400) : 800 + (hash % 2000);
+    const speedFactor = 24 + (hash % 48);
+    const likes = Math.floor(maxCap * (1 - Math.exp(-activeHours / speedFactor)));
+    return likes > 0 ? likes : 0;
+};
+
 export default function ProfileTab({ user }: { user: any }) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -110,10 +154,9 @@ export default function ProfileTab({ user }: { user: any }) {
                 let displayLikes = r.likes_count || 0;
                 let displayViews = r.views_count || 0; 
                 if (isFakeOn) {
-                    const ageInHours = (Date.now() - new Date(r.created_at || Date.now()).getTime()) / (1000 * 60 * 60);
-                    const fakeLikesBoost = Math.floor(ageInHours * 5) + 35 + (index * 2); 
-                    displayLikes += fakeLikesBoost;
-                    displayViews += fakeLikesBoost * (Math.floor(Math.random() * 4) + 6);
+                    const engineLikes = calculateFakeLikes(r.id, r.created_at, isFakeOn);
+                    displayLikes += engineLikes;
+                    displayViews += engineLikes > 0 ? engineLikes * (Math.floor(Math.random() * 4) + 6) : 0;
                 }
                 return { ...r, likes_count: displayLikes, viewsCount: displayViews };
             });
@@ -136,10 +179,9 @@ export default function ProfileTab({ user }: { user: any }) {
           let displayViews = r.views_count || 0;
 
           if (isFakeOn) {
-              const ageInHours = (Date.now() - new Date(r.created_at || Date.now()).getTime()) / (1000 * 60 * 60);
-              const fakeLikesBoost = Math.floor(ageInHours * 5) + 35 + (index * 2); 
-              displayLikes += fakeLikesBoost;
-              displayViews += fakeLikesBoost * (Math.floor(Math.random() * 4) + 6);
+              const engineLikes = calculateFakeLikes(r.id, r.created_at, isFakeOn);
+              displayLikes += engineLikes;
+              displayViews += engineLikes > 0 ? engineLikes * (Math.floor(Math.random() * 4) + 6) : 0;
           }
           
           tViews += displayViews;
@@ -162,12 +204,8 @@ export default function ProfileTab({ user }: { user: any }) {
     const realFollowers = followersCount || 0;
     const bonusFollowers = profileData?.bonus_followers || 0;
     
-    let baseFake = 0;
-    if (isFakeOn && user.id) {
-        baseFake = (user.id.charCodeAt(0) * 25) + (user.id.charCodeAt(1) * 10);
-    }
-
-    const finalFollowers = isFakeOn ? realFollowers + bonusFollowers + baseFake : realFollowers;
+    const engineFollowers = calculateFakeFollowers(user.id, profileData?.created_at, isFakeOn);
+    const finalFollowers = realFollowers + bonusFollowers + engineFollowers;
 
     setStats({ 
         posts: recipes?.length || 0, 
@@ -721,6 +759,7 @@ export default function ProfileTab({ user }: { user: any }) {
           </div>
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] max-w-4xl mx-auto w-full">
             
+            {/* 🚀 VERIFICATION REQUEST SECTION IN SETTINGS */}
             <div className="bg-white dark:bg-[#121216] rounded-[2rem] p-6 shadow-[0_8px_30px_#0000000a] dark:shadow-none border border-orange-500/20 relative overflow-hidden group">
                 <div className={`absolute top-0 right-0 w-32 h-32 bg-orange-500 opacity-10 rounded-bl-[100px] pointer-events-none transition-all group-hover:scale-110`}></div>
                 <h4 className="text-xs font-black text-orange-500 uppercase tracking-widest mb-6">Account Verification</h4>
@@ -991,7 +1030,8 @@ export default function ProfileTab({ user }: { user: any }) {
         </div>, document.body
       )}
 
-      {mounted && toast.isOpen && createPortal(<div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100000] pointer-events-none"><div className="bg-slate-900 dark:bg-[#1c1c1e] text-white px-6 py-3.5 rounded-full shadow-lg text-sm font-bold border border-slate-700 dark:border-white/10 whitespace-nowrap">{toast.message}</div></div>, document.body)}
+      {/* TOASTS */}
+      {mounted && toast.isOpen && createPortal(<div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100000] pointer-events-none animate-in slide-in-from-top-4"><div className="bg-slate-900 dark:bg-[#1c1c1e] text-white px-6 py-3.5 rounded-full shadow-lg text-sm font-bold border border-slate-700 dark:border-white/10 whitespace-nowrap">{toast.message}</div></div>, document.body)}
     </div>
   );
 }
