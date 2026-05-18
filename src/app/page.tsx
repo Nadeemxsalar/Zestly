@@ -30,7 +30,7 @@ export default function HomePage() {
   // 🚀 CUSTOM ALERT MODAL STATE
   const [customAlert, setCustomAlert] = useState({ isOpen: false, title: "", message: "", icon: "🔒" });
   
-  // TOAST STATE (Added for safe alerts)
+  // TOAST STATE
   const [toast, setToast] = useState({ isOpen: false, message: "" });
 
   // 🚀 NEW FEATURE STATES
@@ -56,27 +56,39 @@ export default function HomePage() {
         setActiveTab(savedTab);
       }
 
-      // 🚀 Install Banner Next-Day Logic
-      const dismissedAt = localStorage.getItem("zestly_install_dismissed");
-      if (dismissedAt) {
-        const timePassed = Date.now() - parseInt(dismissedAt);
-        const oneDayMs = 24 * 60 * 60 * 1000;
-        if (timePassed < oneDayMs) {
-          setShowInstallBanner(false); 
+      // 🚀 PWA CHECK: App pehle se install hai ya nahi?
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+
+      if (isStandalone) {
+        // Agar app install ho chuki hai, toh banner kabhi mat dikhao
+        setShowInstallBanner(false);
+      } else {
+        // Agar app browser mein chal rahi hai, tab 24h logic check karo
+        const dismissedAt = localStorage.getItem("zestly_install_dismissed");
+        if (dismissedAt) {
+          const timePassed = Date.now() - parseInt(dismissedAt);
+          const oneDayMs = 24 * 60 * 60 * 1000;
+          if (timePassed < oneDayMs) {
+            setShowInstallBanner(false); 
+          } else {
+            localStorage.removeItem("zestly_install_dismissed");
+            setShowInstallBanner(true); 
+          }
         } else {
-          localStorage.removeItem("zestly_install_dismissed");
           setShowInstallBanner(true); 
         }
-      } else {
-        setShowInstallBanner(true); 
       }
 
-      // 🚀 Catch PWA Install Prompt
+      // 🚀 Catch PWA Install Prompt (For Android/Chrome)
       const handleBeforeInstallPrompt = (e: Event) => {
         e.preventDefault();
         setDeferredPrompt(e);
-        // Only show banner if we caught the install prompt or if it hasn't been dismissed
-        if (!dismissedAt) setShowInstallBanner(true);
+        // Agar standalone nahi hai aur dismiss nahi kiya, toh prompt milne par pakka dikhao
+        const dismissedAt = localStorage.getItem("zestly_install_dismissed");
+        const alreadyInstalled = window.matchMedia('(display-mode: standalone)').matches;
+        if (!dismissedAt && !alreadyInstalled) {
+          setShowInstallBanner(true);
+        }
       };
       window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
 
