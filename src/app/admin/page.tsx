@@ -90,45 +90,57 @@ const getHash = (str: string) => {
   return Math.abs(hash);
 };
 
+// 🔥 UPDATED: STRICT DELAY & GRADUAL GROWTH ALGORITHM
 const calculateFakeFollowers = (id: string, createdAt: string, isFakeOn: boolean) => {
     if (!isFakeOn || !id || !createdAt) return 0;
     const ageInHours = Math.max(0, (Date.now() - new Date(createdAt).getTime()) / 3600000);
     
     const hash = getHash(id);
-    const startDelay = (hash % 46) + 2; 
-    if (ageInHours <= startDelay) return 0; 
+    
+    // Strict Lock: Account must be at least 2 to 3 hours old
+    const strictDelay = 2 + (hash % 2); 
+    if (ageInHours < strictDelay) return 0; // Exactly 0 before delay passes
 
-    const activeHours = ageInHours - startDelay;
+    // Time passed AFTER the strict delay
+    const activeHours = ageInHours - strictDelay;
+    
+    // Max cap logic
     const tierHash = hash % 100;
     let maxCap;
-    
-    if (tierHash < 60) maxCap = 10 + (hash % 140); 
-    else if (tierHash < 90) maxCap = 150 + (hash % 850); 
-    else maxCap = 1000 + (hash % 4000); 
+    if (tierHash < 50) maxCap = 150 + (hash % 300); // 150 to 450 total
+    else if (tierHash < 85) maxCap = 500 + (hash % 1500); // 500 to 2000 total
+    else maxCap = 2000 + (hash % 5000); // Rare viral accounts: 2000 to 7000
 
-    const speedFactor = 24 + (hash % 120); 
+    // Speed Factor: Higher means slower growth. It will take days to reach max cap.
+    const speedFactor = 48 + (hash % 72); 
+    
+    // Exponential curve: starts very slow (e.g., 5, 20, 80, 250) and smooths out.
     const followers = Math.floor(maxCap * (1 - Math.exp(-activeHours / speedFactor)));
     
     return followers;
 };
 
+// 🔥 UPDATED: STRICT DELAY & GRADUAL LIKES ALGORITHM
 const calculateFakeLikes = (id: string, createdAt: string, isFakeOn: boolean) => {
     if (!isFakeOn || !id || !createdAt) return 0;
     const ageInHours = Math.max(0, (Date.now() - new Date(createdAt).getTime()) / 3600000);
     
     const hash = getHash(id);
-    const startDelay = (hash % 11) + 1;
-    if (ageInHours <= startDelay) return 0; 
+    
+    // Strict Lock: Post must be at least 1 to 2 hours old (Likes start slightly faster than followers)
+    const strictDelay = 1 + (hash % 2); 
+    if (ageInHours < strictDelay) return 0; // Exactly 0 before delay
 
-    const activeHours = ageInHours - startDelay;
+    const activeHours = ageInHours - strictDelay;
+    
     const tierHash = hash % 100;
     let maxCap;
-    
-    if (tierHash < 65) maxCap = 5 + (hash % 80); 
-    else if (tierHash < 93) maxCap = 85 + (hash % 915); 
-    else maxCap = 1000 + (hash % 9000); 
+    if (tierHash < 60) maxCap = 40 + (hash % 100); // 40 to 140 likes
+    else if (tierHash < 90) maxCap = 200 + (hash % 400); // 200 to 600 likes
+    else maxCap = 800 + (hash % 2000); // Viral posts: 800 to 2800
 
-    const speedFactor = 12 + (hash % 48); 
+    const speedFactor = 24 + (hash % 48); // Reaches mostly full potential in 1 to 3 days
+    
     const likes = Math.floor(maxCap * (1 - Math.exp(-activeHours / speedFactor)));
 
     return likes;
@@ -154,7 +166,7 @@ export default function ZestlyAdminPage() {
     vegCount: 0,
     nonVegCount: 0,
     storagePercent: 0,
-    estimatedValue: 0, // 🚀 NEW FEATURE 2
+    estimatedValue: 0, 
   });
   const [users, setUsers] = useState<UserRow[]>([]);
   const [recipes, setRecipes] = useState<RecipeRow[]>([]);
@@ -162,7 +174,7 @@ export default function ZestlyAdminPage() {
   const [graphData, setGraphData] = useState<number[]>([]);
   const [topRecipes, setTopRecipes] = useState<RecipeRow[]>([]);
   
-  const [serverLoad, setServerLoad] = useState(24); // 🚀 NEW FEATURE 1
+  const [serverLoad, setServerLoad] = useState(24); 
 
   // UI
   const [activeSection, setActiveSection] = useState<"overview" | "users" | "recipes" | "verification" | "algorithm" | "emails" | "logs">("overview");
@@ -495,7 +507,6 @@ export default function ZestlyAdminPage() {
       setEditFormData({ full_name: u.full_name, username: u.username, bio: u.bio });
   };
 
-  // 🚀 FEATURE 5: Real-Time Title Case Correction applied before saving
   const handleEditUserSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!editingUser) return;
@@ -659,7 +670,6 @@ export default function ZestlyAdminPage() {
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
-              {/* 🚀 FEATURE 3: Broadcast Button UI */}
               <button onClick={() => showToast("Broadcast Alert Sent to all active users! 📢")} className="hidden md:flex items-center gap-2 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 px-3 py-2 rounded-xl text-xs font-bold text-indigo-400 transition-colors cursor-pointer outline-none">
                 📢 Broadcast
               </button>
@@ -691,7 +701,6 @@ export default function ZestlyAdminPage() {
                     { label: "Recipes", value: formatNum(metrics.totalRecipes), sub: `+${metrics.newRecipesToday} today`, icon: "🍲", color: "red" },
                     { label: "Connections", value: formatNum(metrics.totalFollows), sub: "Total follows", icon: "🔗", color: "yellow" },
                     
-                    // 🚀 FEATURE 2: App Valuation Metric
                     { label: "App Valuation", value: `₹${formatNum(metrics.estimatedValue)}`, sub: "Estimated worth", icon: "💎", color: "indigo" },
                     
                     { label: "Notifications", value: formatNum(metrics.totalNotifs), sub: "All time", icon: "🔔", color: "blue" },
@@ -743,7 +752,6 @@ export default function ZestlyAdminPage() {
                   <div className="bg-white/[0.02] border border-white/5 rounded-[2rem] p-5 sm:p-7 flex flex-col">
                     <h3 className="text-white font-black text-lg mb-6">System Health & Controls</h3>
                     
-                    {/* 🚀 FEATURE 1: System Health Tracker */}
                     <div className="flex items-center justify-between bg-black/40 p-3 rounded-xl border border-white/5 mb-6">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
@@ -830,7 +838,6 @@ export default function ZestlyAdminPage() {
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-3">
                                   <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-sm font-black shrink-0 overflow-hidden relative">
-                                    {/* 🚀 FEATURE 4: Top Chef Crown */}
                                     {index === 0 && <div className="absolute -top-1 -right-1 text-xs rotate-12 drop-shadow-md z-10">👑</div>}
                                     {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" /> : u.full_name.charAt(0).toUpperCase()}
                                   </div>
@@ -1015,7 +1022,7 @@ export default function ZestlyAdminPage() {
                               </td>
                               <td className="px-4 py-3.5"><span className="text-slate-500 text-xs">{timeAgo(r.created_at)}</span></td>
                               <td className="px-4 py-3.5 text-right">
-                                <button onClick={() => deleteRecipe(r.id)} className="text-[11px] font-bold px-3 py-1.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20 transition-all outline-none cursor-pointer">Delete</button>
+                                <button onClick={() => deleteRecipe(r.id)} className="text-[11px] font-bold px-3 py-1.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-50 hover:text-white border border-red-500/20 transition-all outline-none cursor-pointer">Delete</button>
                               </td>
                             </tr>
                           ))
