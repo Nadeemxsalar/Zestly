@@ -49,4 +49,4 @@ Make sure you have Node.js installed (v18.x or later recommended).
 
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/your-username/zestly.git](https://github.com/your-username/zestly.git)
+   git clone [https://github.com/Nadeemxsalar/zestly.git](https://github.com/Nadeemxsalar/zestly.git)
