@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+<div align="center">
+  
+  # 🍳 Zestly
+  **The Ultimate Culinary Social Network & Recipe Platform**
 
-## Getting Started
+  [![Next.js](https://img.shields.io/badge/Next.js-14-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
+  [![React](https://img.shields.io/badge/React-18-blue?style=for-the-badge&logo=react)](https://reactjs.org/)
+  [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?style=for-the-badge&logo=tailwind-css)](https://tailwindcss.com/)
+  [![Supabase](https://img.shields.io/badge/Supabase-Backend-3ECF8E?style=for-the-badge&logo=supabase)](https://supabase.com/)
+  [![Vercel](https://img.shields.io/badge/Deployed_on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/)
+  
+</div>
 
-First, run the development server:
+<br />
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 🌟 About The Project
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+**Zestly** is a modern, mobile-first Progressive Web App (PWA) designed for food enthusiasts, home cooks, and professional chefs. It goes beyond a standard recipe book by integrating social networking features, AI-powered assistance, and a stunning "Glassmorphism" UI. 
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Whether you want to share your latest culinary masterpiece, find ingredient substitutes via AI, or earn the coveted "Master Chef Badge," Zestly is your digital kitchen.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🚀 Top Features
 
-## Learn More
+- 📱 **Progressive Web App (PWA):** Fully installable on iOS, Android, and Desktop with a seamless native-app experience and smart offline detection.
+- 🥘 **Interactive Recipe Feed:** Browse, like, comment, and share recipes. Complete with a dynamic view & engagement tracking system.
+- 👨‍🍳 **Distraction-Free Cook Mode:** Step-by-step interactive cooking guide with adjustable portion serving sizes.
+- 🤖 **AI Chef Assistant:** Integrated smart chatbot to help with recipe suggestions, dietary substitutes, and cooking tips.
+- 🔒 **Private Recipe Vault:** Securely save and manage your favorite recipes for quick access.
+- 🏆 **Creator Verification System:** Dedicated verification queue to earn the "Master Chef" Gold Tick.
+- 🎨 **Premium UI/UX:** Advanced CSS animations, Glassmorphism elements, dynamic themes (Orange, Green, Blue), and metric/imperial toggle.
+- ⚡ **Super Admin Dashboard:** A God-mode panel to monitor database load, manage users, broadcast messages, and control organic growth algorithms.
 
-To learn more about Next.js, take a look at the following resources:
+## 🛠️ Tech Stack
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Frontend:** Next.js (App Router), React, Tailwind CSS
+- **Backend & Database:** Supabase (PostgreSQL, Auth, Storage)
+- **Image Processing:** React Easy Crop
+- **Notifications:** OneSignal (Push Notifications)
+- **Deployment:** Vercel
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## ⚙️ Getting Started
 
-## Deploy on Vercel
+Follow these steps to set up the project locally on your machine.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Prerequisites
+Make sure you have Node.js installed (v18.x or later recommended).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone [https://github.com/your-username/zestly.git](https://github.com/your-username/zestly.git)
