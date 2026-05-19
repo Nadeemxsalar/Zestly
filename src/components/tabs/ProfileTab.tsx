@@ -7,47 +7,94 @@ import { createPortal } from "react-dom";
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from "@/lib/cropUtils";
 
-// 🚀 ZESTLY VIRAL ENGINE ALGORITHM (Strict Delays)
+// 🚀 ULTRA-REALISTIC INSTAGRAM-LEVEL VIRAL ENGINE
 const getHash = (str: string) => {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
+    hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
   }
   return Math.abs(hash);
 };
 
 const calculateFakeFollowers = (id: string, createdAt: string, isFakeOn: boolean) => {
     if (!isFakeOn || !id || !createdAt) return 0;
+    
     const now = Date.now();
     const createdTime = new Date(createdAt).getTime();
     if (createdTime > now) return 0;
-    
-    const ageInMinutes = Math.floor((now - createdTime) / 60000);
-    if (ageInMinutes <= 180) return 0; // 🛑 STRICT 3 HOUR DELAY (180 mins)
 
-    const activeHours = (ageInMinutes - 180) / 60;
+    const ageInMinutes = Math.floor((now - createdTime) / 60000);
+
+    // 🛑 STRICT LOCK: 180 mins (3 hours)
+    const delayMinutes = 180; 
+    if (ageInMinutes <= delayMinutes) return 0; 
+
+    const activeHours = (ageInMinutes - delayMinutes) / 60;
     const hash = getHash(id);
-    let maxCap = (hash % 100 < 50) ? 150 + (hash % 300) : (hash % 100 < 85) ? 500 + (hash % 1500) : 2000 + (hash % 5000);
-    const speedFactor = 48 + (hash % 72);
-    const followers = Math.floor(maxCap * (1 - Math.exp(-activeHours / speedFactor)));
+    const tier = hash % 100;
+    
+    let maxCap, speedFactor;
+
+    // 🧠 Instagram-Style Multi-Tier Scalability
+    if (tier < 60) {
+        // Normal User (60% log): 50 - 500 followers (takes ~30 days to peak)
+        maxCap = 50 + (hash % 450);
+        speedFactor = 24 * 15; 
+    } else if (tier < 90) {
+        // Influencer (30% log): 1k - 10k followers (takes ~60 days to peak)
+        maxCap = 1000 + (hash % 9000);
+        speedFactor = 24 * 30;
+    } else {
+        // Viral Star (10% log): 15k - 100k followers (takes ~90 days to peak)
+        maxCap = 15000 + (hash % 85000);
+        speedFactor = 24 * 45;
+    }
+
+    // Smooth organic saturation curve
+    const variance = 1 + ((hash % 10) / 100); // Unique 1.0 to 1.09 modifier
+    const followers = Math.floor(maxCap * (1 - Math.exp(-(activeHours * variance) / speedFactor)));
+    
     return followers > 0 ? followers : 0;
 };
 
 const calculateFakeLikes = (id: string, createdAt: string, isFakeOn: boolean) => {
     if (!isFakeOn || !id || !createdAt) return 0;
+    
     const now = Date.now();
     const createdTime = new Date(createdAt).getTime();
     if (createdTime > now) return 0;
-    
-    const ageInMinutes = Math.floor((now - createdTime) / 60000);
-    if (ageInMinutes <= 120) return 0; // 🛑 STRICT 2 HOUR DELAY (120 mins)
 
-    const activeHours = (ageInMinutes - 120) / 60;
+    const ageInMinutes = Math.floor((now - createdTime) / 60000);
+
+    // 🛑 STRICT LOCK: 120 mins (2 hours)
+    const delayMinutes = 120;
+    if (ageInMinutes <= delayMinutes) return 0;
+
+    const activeHours = (ageInMinutes - delayMinutes) / 60;
     const hash = getHash(id);
-    let maxCap = (hash % 100 < 60) ? 40 + (hash % 100) : (hash % 100 < 90) ? 200 + (hash % 400) : 800 + (hash % 2000);
-    const speedFactor = 24 + (hash % 48);
-    const likes = Math.floor(maxCap * (1 - Math.exp(-activeHours / speedFactor)));
+    const tier = hash % 100;
+    
+    let maxCap, speedFactor;
+
+    // 🧠 Post Virality Tiers
+    if (tier < 50) {
+        // Normal Post: 20 - 200 likes (peaks in 1.5 days)
+        maxCap = 20 + (hash % 180);
+        speedFactor = 12; 
+    } else if (tier < 85) {
+        // Popular Post: 300 - 3,000 likes (peaks in 3 days)
+        maxCap = 300 + (hash % 2700);
+        speedFactor = 24; 
+    } else {
+        // Viral Masterpiece: 5k - 50k likes (peaks in 6 days)
+        maxCap = 5000 + (hash % 45000);
+        speedFactor = 48; 
+    }
+
+    // Initial Surge Magic: Viral posts get faster early traction
+    const surge = (tier >= 85 && activeHours < 48) ? 1.5 : 1;
+    const likes = Math.floor(maxCap * (1 - Math.exp(-(activeHours * surge) / speedFactor)));
+
     return likes > 0 ? likes : 0;
 };
 

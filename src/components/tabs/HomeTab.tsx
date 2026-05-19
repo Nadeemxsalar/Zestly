@@ -68,6 +68,90 @@ const formatNum = (n: number) => {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 };
 
+// 🚀 ULTRA-REALISTIC INSTAGRAM-LEVEL VIRAL ENGINE
+const getHash = (str: string) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
+  }
+  return Math.abs(hash);
+};
+
+const calculateFakeFollowers = (id: string, createdAt: string, isFakeOn: boolean) => {
+    if (!isFakeOn || !id || !createdAt) return 0;
+    
+    const now = Date.now();
+    const createdTime = new Date(createdAt).getTime();
+    if (createdTime > now) return 0;
+
+    const ageInMinutes = Math.floor((now - createdTime) / 60000);
+
+    // 🛑 STRICT LOCK: 180 mins (3 hours)
+    const delayMinutes = 180; 
+    if (ageInMinutes <= delayMinutes) return 0; 
+
+    const activeHours = (ageInMinutes - delayMinutes) / 60;
+    const hash = getHash(id);
+    const tier = hash % 100;
+    
+    let maxCap, speedFactor;
+
+    // 🧠 Instagram-Style Multi-Tier Scalability
+    if (tier < 60) {
+        maxCap = 50 + (hash % 450);
+        speedFactor = 24 * 15; 
+    } else if (tier < 90) {
+        maxCap = 1000 + (hash % 9000);
+        speedFactor = 24 * 30;
+    } else {
+        maxCap = 15000 + (hash % 85000);
+        speedFactor = 24 * 45;
+    }
+
+    const variance = 1 + ((hash % 10) / 100); 
+    const followers = Math.floor(maxCap * (1 - Math.exp(-(activeHours * variance) / speedFactor)));
+    
+    return followers > 0 ? followers : 0;
+};
+
+const calculateFakeLikes = (id: string, createdAt: string, isFakeOn: boolean) => {
+    if (!isFakeOn || !id || !createdAt) return 0;
+    
+    const now = Date.now();
+    const createdTime = new Date(createdAt).getTime();
+    if (createdTime > now) return 0;
+
+    const ageInMinutes = Math.floor((now - createdTime) / 60000);
+
+    // 🛑 STRICT LOCK: 120 mins (2 hours)
+    const delayMinutes = 120;
+    if (ageInMinutes <= delayMinutes) return 0;
+
+    const activeHours = (ageInMinutes - delayMinutes) / 60;
+    const hash = getHash(id);
+    const tier = hash % 100;
+    
+    let maxCap, speedFactor;
+
+    // 🧠 Post Virality Tiers
+    if (tier < 50) {
+        maxCap = 20 + (hash % 180);
+        speedFactor = 12; 
+    } else if (tier < 85) {
+        maxCap = 300 + (hash % 2700);
+        speedFactor = 24; 
+    } else {
+        maxCap = 5000 + (hash % 45000);
+        speedFactor = 48; 
+    }
+
+    const surge = (tier >= 85 && activeHours < 48) ? 1.5 : 1;
+    const likes = Math.floor(maxCap * (1 - Math.exp(-(activeHours * surge) / speedFactor)));
+
+    return likes > 0 ? likes : 0;
+};
+
+
 // 🚀 REUSABLE VERIFIED BADGE COMPONENT (FIXED POSITIONING)
 const VerifiedBadge = ({ sizeClass = "w-5 h-5", noTooltip = false, containerClass = "" }: { sizeClass?: string, noTooltip?: boolean, containerClass?: string }) => (
     <div className={`relative flex items-center justify-center group shrink-0 cursor-pointer ${containerClass}`} title={noTooltip ? "" : "Official Verified Creator"}>
@@ -280,12 +364,11 @@ export default function HomeTab({ user }: HomeTabProps) {
       let displayLikes = realLikes;
       let displayViews = realViews;
 
+      // 🛑 BUG FIXED: Now properly using the Instagram Engine!
       if (isFakeOn) {
-          const ageInHours = (Date.now() - new Date(item.created_at || Date.now()).getTime()) / (1000 * 60 * 60);
-          const fakeLikesBoost = Math.floor(ageInHours * 5) + 35 + (index * 2); 
-          const fakeViewsBoost = fakeLikesBoost * (Math.floor(Math.random() * 4) + 6); 
-          displayLikes = realLikes + fakeLikesBoost;
-          displayViews = realViews + fakeViewsBoost;
+          const engineLikes = calculateFakeLikes(item.id, item.created_at, isFakeOn);
+          displayLikes = realLikes + engineLikes;
+          displayViews = realViews + (engineLikes > 0 ? engineLikes * (Math.floor(Math.random() * 4) + 6) : 0);
       }
 
       return {
@@ -325,10 +408,11 @@ export default function HomeTab({ user }: HomeTabProps) {
 
     const { data: profilesData } = await supabase.from("profiles").select("*").order("bonus_followers", { ascending: false }).limit(10);
     
+    // 🛑 BUG FIXED: No more hardcoded 1200 followers! Now using the engine.
     if (profilesData && profilesData.length > 0) {
       const formattedChefs = profilesData.map(p => ({
           ...p,
-          followers: isFakeOn ? (p.followers_count || 0) + (p.bonus_followers || 0) + 1200 : (p.followers_count || 0),
+          followers: isFakeOn ? (p.followers_count || 0) + (p.bonus_followers || 0) + calculateFakeFollowers(p.id, p.created_at, isFakeOn) : (p.followers_count || 0),
           is_verified: p.is_verified || false
       })).sort((a, b) => b.followers - a.followers);
       setTrendingChefs(formattedChefs);
@@ -428,7 +512,10 @@ export default function HomeTab({ user }: HomeTabProps) {
     
     const realF = followersCount || 0;
     const bonusF = profileData?.bonus_followers || 0;
-    const finalFollowers = fakeMode ? realF + bonusF + 1200 : realF;
+    
+    // 🛑 BUG FIXED: Now properly scaling followers instead of flat + 1200
+    const engineF = calculateFakeFollowers(chefId, profileData?.created_at, fakeMode);
+    const finalFollowers = fakeMode ? realF + bonusF + engineF : realF;
 
     setViewingChefRecipes(formattedChefPosts);
     setIsFollowingChef(!!followCheck);
@@ -1218,6 +1305,20 @@ export default function HomeTab({ user }: HomeTabProps) {
           </div>
         </div>,
         document.body
+      )}
+
+      {mounted && alertModal.isOpen && createPortal(
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200" onClick={() => setAlertModal({ isOpen: false, message: "" })}>
+          <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-sm rounded-[2rem] p-6 shadow-2xl border border-slate-200 dark:border-white/10 text-center" onClick={e => e.stopPropagation()}>
+            <div className="w-16 h-16 mx-auto bg-orange-100 dark:bg-orange-500/20 text-orange-500 rounded-full flex items-center justify-center text-2xl mb-4">👨‍🍳</div>
+            <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">Login Required</h3>
+            <p className="text-sm text-slate-500 mb-6">{alertModal.message}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setAlertModal({ isOpen: false, message: "" })} className="flex-1 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-white font-bold py-3.5 rounded-xl transition-all outline-none cursor-pointer">Cancel</button>
+              <button onClick={() => router.push("/login")} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3.5 rounded-xl transition-all outline-none shadow-[0_4px_15px_rgba(249,115,22,0.3)] cursor-pointer active:scale-95">Log In</button>
+            </div>
+          </div>
+        </div>, document.body
       )}
 
       {mounted && toast.isOpen && createPortal(

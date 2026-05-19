@@ -80,83 +80,93 @@ const toTitleCase = (str: string) => {
   return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
 };
 
-// 🚀 ULTRA-REALISTIC VIRAL ENGINE (MATH BASED)
+// 🚀 ULTRA-REALISTIC INSTAGRAM-LEVEL VIRAL ENGINE
 const getHash = (str: string) => {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0; 
+    hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
   }
   return Math.abs(hash);
 };
 
-// 🛑 FIXED: BULLETPROOF STRICT ZERO DELAY ALGORITHM
 const calculateFakeFollowers = (id: string, createdAt: string, isFakeOn: boolean) => {
     if (!isFakeOn || !id || !createdAt) return 0;
     
     const now = Date.now();
     const createdTime = new Date(createdAt).getTime();
-    
-    // Safety check against future dates (timezone bugs)
     if (createdTime > now) return 0;
 
     const ageInMinutes = Math.floor((now - createdTime) / 60000);
 
-    // 🛑 STRICT LOCK: Naya account banne ke 180 minutes (3 hours) tak STRICTLY ZERO followers!
+    // 🛑 STRICT LOCK: 180 mins (3 hours)
     const delayMinutes = 180; 
-    if (ageInMinutes <= delayMinutes) {
-        return 0; 
+    if (ageInMinutes <= delayMinutes) return 0; 
+
+    const activeHours = (ageInMinutes - delayMinutes) / 60;
+    const hash = getHash(id);
+    const tier = hash % 100;
+    
+    let maxCap, speedFactor;
+
+    // 🧠 Instagram-Style Multi-Tier Scalability
+    if (tier < 60) {
+        // Normal User (60% log): 50 - 500 followers (takes ~30 days to peak)
+        maxCap = 50 + (hash % 450);
+        speedFactor = 24 * 15; 
+    } else if (tier < 90) {
+        // Influencer (30% log): 1k - 10k followers (takes ~60 days to peak)
+        maxCap = 1000 + (hash % 9000);
+        speedFactor = 24 * 30;
+    } else {
+        // Viral Star (10% log): 15k - 100k followers (takes ~90 days to peak)
+        maxCap = 15000 + (hash % 85000);
+        speedFactor = 24 * 45;
     }
 
-    // Uske baad growth natural tareeke se shuru hogi (0 se badhna start hoga)
-    const activeHours = (ageInMinutes - delayMinutes) / 60;
+    // Smooth organic saturation curve
+    const variance = 1 + ((hash % 10) / 100); // Unique 1.0 to 1.09 modifier
+    const followers = Math.floor(maxCap * (1 - Math.exp(-(activeHours * variance) / speedFactor)));
     
-    const hash = getHash(id);
-    const tierHash = hash % 100;
-    
-    let maxCap;
-    if (tierHash < 50) maxCap = 150 + (hash % 300); // 150 to 450 total
-    else if (tierHash < 85) maxCap = 500 + (hash % 1500); // 500 to 2000 total
-    else maxCap = 2000 + (hash % 5000); // Rare viral accounts: 2000 to 7000
-
-    const speedFactor = 48 + (hash % 72); 
-    
-    // Exponential curve
-    const followers = Math.floor(maxCap * (1 - Math.exp(-activeHours / speedFactor)));
-    
-    return followers > 0 ? followers : 0; // Final safety net so it never bugs out
+    return followers > 0 ? followers : 0;
 };
 
-// 🛑 FIXED: BULLETPROOF LIKES ALGORITHM
 const calculateFakeLikes = (id: string, createdAt: string, isFakeOn: boolean) => {
     if (!isFakeOn || !id || !createdAt) return 0;
     
     const now = Date.now();
     const createdTime = new Date(createdAt).getTime();
-
     if (createdTime > now) return 0;
 
     const ageInMinutes = Math.floor((now - createdTime) / 60000);
 
-    // 🛑 STRICT LOCK: Nayi post ke 120 minutes (2 hours) tak STRICTLY ZERO likes!
+    // 🛑 STRICT LOCK: 120 mins (2 hours)
     const delayMinutes = 120;
-    if (ageInMinutes <= delayMinutes) {
-        return 0;
-    }
+    if (ageInMinutes <= delayMinutes) return 0;
 
     const activeHours = (ageInMinutes - delayMinutes) / 60;
-    
     const hash = getHash(id);
-    const tierHash = hash % 100;
+    const tier = hash % 100;
     
-    let maxCap;
-    if (tierHash < 60) maxCap = 40 + (hash % 100); // 40 to 140 likes
-    else if (tierHash < 90) maxCap = 200 + (hash % 400); // 200 to 600 likes
-    else maxCap = 800 + (hash % 2000); // Viral posts: 800 to 2800
+    let maxCap, speedFactor;
 
-    const speedFactor = 24 + (hash % 48); 
-    
-    const likes = Math.floor(maxCap * (1 - Math.exp(-activeHours / speedFactor)));
+    // 🧠 Post Virality Tiers
+    if (tier < 50) {
+        // Normal Post: 20 - 200 likes (peaks in 1.5 days)
+        maxCap = 20 + (hash % 180);
+        speedFactor = 12; 
+    } else if (tier < 85) {
+        // Popular Post: 300 - 3,000 likes (peaks in 3 days)
+        maxCap = 300 + (hash % 2700);
+        speedFactor = 24; 
+    } else {
+        // Viral Masterpiece: 5k - 50k likes (peaks in 6 days)
+        maxCap = 5000 + (hash % 45000);
+        speedFactor = 48; 
+    }
+
+    // Initial Surge Magic: Viral posts get faster early traction
+    const surge = (tier >= 85 && activeHours < 48) ? 1.5 : 1;
+    const likes = Math.floor(maxCap * (1 - Math.exp(-(activeHours * surge) / speedFactor)));
 
     return likes > 0 ? likes : 0;
 };
@@ -307,7 +317,7 @@ export default function ZestlyAdminPage() {
             supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", p.id),
           ]);
           
-          const realFollowers = fc || 0;
+          const realFollowers = fc || 0; // Pure Real organic followers
           const bonusFollowers = p.bonus_followers || 0;
           const engineFollowers = calculateFakeFollowers(p.id, p.created_at, isFakeOn);
 
@@ -322,7 +332,7 @@ export default function ZestlyAdminPage() {
             real_followers: realFollowers,
             bonus_followers: bonusFollowers,
             engine_followers: engineFollowers,
-            followers_count: realFollowers + bonusFollowers + engineFollowers,
+            followers_count: realFollowers + bonusFollowers + engineFollowers, // Combined Display
             is_verified: p.is_verified || false,
             verification_status: p.verification_status || 'none',
             following_count: fgc || 0,
@@ -334,7 +344,7 @@ export default function ZestlyAdminPage() {
 
       // Build recipe rows
       const formattedRecipes: RecipeRow[] = (recipesData || []).map((r: any) => {
-        const realLikes = r.likes_count || 0;
+        const realLikes = r.likes_count || 0; // Pure Real organic likes
         const engineLikes = calculateFakeLikes(r.id, r.created_at, isFakeOn);
         
         return {
@@ -344,7 +354,7 @@ export default function ZestlyAdminPage() {
           type: r.type || "Veg",
           real_likes: realLikes,
           engine_likes: engineLikes,
-          likes_count: realLikes + engineLikes,
+          likes_count: realLikes + engineLikes, // Combined Display
           comments_count: r.comments_data ? r.comments_data.length : 0,
           calories: r.calories || 0,
           difficulty: r.difficulty || "Medium",
@@ -1132,7 +1142,7 @@ export default function ZestlyAdminPage() {
                   <div className="absolute right-0 top-0 w-64 h-64 bg-purple-500/20 blur-[80px] pointer-events-none"></div>
                   <div>
                     <h2 className="text-2xl font-black text-white flex items-center gap-2">Organic Growth Engine 🚀</h2>
-                    <p className="text-indigo-200 text-sm mt-1 max-w-md">Smart time-based logarithmic algorithm to artificially scale likes and followers smoothly and realistically. Starts at ZERO.</p>
+                    <p className="text-indigo-200 text-sm mt-1 max-w-md">Smart multi-tier exponential algorithm to organically scale likes and followers smoothly and realistically. Delay active.</p>
                   </div>
                   <button onClick={toggleFakeMode} className={`relative w-20 h-10 rounded-full p-1.5 transition-all duration-300 outline-none shrink-0 border shadow-inner cursor-pointer ${fakeMode ? "bg-green-500 border-green-400 shadow-[0_0_20px_#4ade8040]" : "bg-white/10 border-white/5"}`}>
                     <div className={`w-7 h-7 bg-white rounded-full shadow-md transition-transform duration-300 flex items-center justify-center text-[10px] font-black ${fakeMode ? "translate-x-10 text-green-500" : "translate-x-0 text-slate-500"}`}>
@@ -1145,7 +1155,7 @@ export default function ZestlyAdminPage() {
                   <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-end mb-6">
                     <div>
                       <h3 className="text-white font-black text-xl flex items-center gap-2">User God Mode ⚡</h3>
-                      <p className="text-slate-500 text-xs mt-1">Edit profile, set custom followers, grant badge directly, or delete DP.</p>
+                      <p className="text-slate-500 text-xs mt-1">Edit profile, set custom followers, grant badge directly, or ban.</p>
                     </div>
                     <input type="text" placeholder="Search user to hack..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)} className="w-full sm:w-64 bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-indigo-500/50" />
                   </div>
@@ -1244,7 +1254,7 @@ export default function ZestlyAdminPage() {
                     )}
                     <div className="flex items-center gap-2 text-slate-600 text-xs pt-2">
                       <span className="text-orange-500 animate-pulse font-black">_</span>
-                      Zestly Engine V3.0 • {new Date().toLocaleTimeString()}
+                      Zestly Engine V4.0 • {new Date().toLocaleTimeString()}
                     </div>
                   </div>
                 </div>
