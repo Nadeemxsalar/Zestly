@@ -223,6 +223,16 @@ export default function ZestlyAdminPage() {
 
   const [toast, setToast] = useState({ isOpen: false, message: "", type: "success" });
   
+  // Custom Confirmation Modal State
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    desc: string;
+    actionFn: () => Promise<void>;
+    isLoading: boolean;
+    type: "danger" | "warning";
+  }>({ isOpen: false, title: "", desc: "", actionFn: async () => {}, isLoading: false, type: "danger" });
+
   const showToast = (msg: string, type: "success" | "danger" = "success") => {
     setToast({ isOpen: true, message: msg, type });
     setTimeout(() => setToast({ isOpen: false, message: "", type: "success" }), 3000);
@@ -367,13 +377,13 @@ export default function ZestlyAdminPage() {
       // Combined Activity Logs
       const combinedLogs: any[] = [];
       (notifsData || []).forEach((n: NotifRow) => {
-          combinedLogs.push({ id: `notif_${n.id}`, action: n.type === "like" ? "Someone liked a recipe ❤️" : "A new chef followed someone 👤", timeStr: n.created_at, type: n.type === "like" ? "success" : "info", icon: n.type === "like" ? "❤️" : "👤" });
+        combinedLogs.push({ id: `notif_${n.id}`, action: n.type === "like" ? "Someone liked a recipe ❤️" : "A new chef followed someone 👤", timeStr: n.created_at, type: n.type === "like" ? "success" : "info", icon: n.type === "like" ? "❤️" : "👤" });
       });
       (profilesData || []).slice(0, 10).forEach((u: any) => {
-          combinedLogs.push({ id: `user_${u.id}`, action: `Chef ${u.full_name || 'Someone'} joined Zestly 🎉`, timeStr: u.created_at, type: "success", icon: "👋" });
+        combinedLogs.push({ id: `user_${u.id}`, action: `Chef ${u.full_name || 'Someone'} joined Zestly 🎉`, timeStr: u.created_at, type: "success", icon: "👋" });
       });
       (recipesData || []).slice(0, 10).forEach((r: any) => {
-          combinedLogs.push({ id: `recipe_${r.id}`, action: `New recipe '${r.name}' published 🍲`, timeStr: r.created_at, type: "info", icon: "🍲" });
+        combinedLogs.push({ id: `recipe_${r.id}`, action: `New recipe '${r.name}' published 🍲`, timeStr: r.created_at, type: "info", icon: "🍲" });
       });
 
       combinedLogs.sort((a, b) => new Date(b.timeStr).getTime() - new Date(a.timeStr).getTime());
@@ -451,16 +461,44 @@ export default function ZestlyAdminPage() {
     init();
   }, [router, fetchDashboardData]);
 
+  // ── CUSTOM CONFIRMATION HELPER ───────────────────────
+  const openConfirm = (title: string, desc: string, type: "danger" | "warning", actionFn: () => Promise<void>) => {
+    setConfirmDialog({ isOpen: true, title, desc, actionFn, isLoading: false, type });
+  };
+
+  const executeConfirm = async () => {
+    setConfirmDialog(prev => ({ ...prev, isLoading: true }));
+    try {
+        await confirmDialog.actionFn();
+    } catch (err) {
+        console.error(err);
+    }
+    setConfirmDialog(prev => ({ ...prev, isOpen: false, isLoading: false }));
+  };
+
   // ── Actions ────────────────────────────────────────────
-  const deleteRecipe = async (id: string) => {
-    if (!confirm("Delete this recipe permanently?")) return;
-    await supabase.from("recipes").delete().eq("id", id);
-    setRecipes((prev) => prev.filter((r) => r.id !== id));
-    setLogs((prev) => [
-      { id: Date.now().toString(), action: "Admin deleted a recipe 🗑️", time: "just now", type: "danger", icon: "🗑️" },
-      ...prev,
-    ]);
-    showToast("Recipe deleted successfully!", "danger");
+  const deleteRecipe = (id: string) => {
+    openConfirm(
+        "Delete Recipe?",
+        "This action cannot be undone. It will permanently remove this recipe from the database.",
+        "danger",
+        async () => {
+            const { error } = await supabase.from("recipes").delete().eq("id", id);
+            
+            if (error) {
+                console.error("Delete Error:", error);
+                showToast(`Failed to delete: ${error.message}`, "danger");
+                return;
+            }
+
+            setRecipes((prev) => prev.filter((r) => r.id !== id));
+            setLogs((prev) => [
+                { id: Date.now().toString(), action: "Admin deleted a recipe 🗑️", time: "just now", type: "danger", icon: "🗑️" },
+                ...prev,
+            ]);
+            showToast("Recipe deleted successfully!", "danger");
+        }
+    );
   };
 
   const toggleFakeMode = async () => {
@@ -520,11 +558,23 @@ export default function ZestlyAdminPage() {
       showToast("Verification Request Rejected! ❌", "danger");
   };
 
-  const removeAvatar = async (userId: string) => {
-      if(!confirm("Are you sure you want to delete this user's Profile Picture?")) return;
-      setUsers(users.map(u => u.id === userId ? { ...u, avatar_url: null } : u));
-      await supabase.from("profiles").update({ avatar_url: null }).eq("id", userId);
-      showToast("Profile Picture removed! 🗑️", "danger");
+  const removeAvatar = (userId: string) => {
+      openConfirm(
+          "Delete Profile Picture?",
+          "Are you sure you want to completely remove this user's avatar?",
+          "warning",
+          async () => {
+              const { error } = await supabase.from("profiles").update({ avatar_url: null }).eq("id", userId);
+              
+              if (error) {
+                  showToast(`Failed: ${error.message}`, "danger");
+                  return;
+              }
+
+              setUsers(users.map(u => u.id === userId ? { ...u, avatar_url: null } : u));
+              showToast("Profile Picture removed! 🗑️", "danger");
+          }
+      );
   };
 
   const handleEditUserClick = (u: UserRow) => {
@@ -549,12 +599,23 @@ export default function ZestlyAdminPage() {
       showToast("User details successfully updated! ✏️");
   };
 
-  const fullyDeleteUser = async (userId: string) => {
-      if(!confirm("⚠️ DANGER: Delete this user completely from the database? This cannot be undone!")) return;
-      
-      await supabase.from("profiles").delete().eq("id", userId);
-      setUsers(users.filter(u => u.id !== userId));
-      showToast("User permanently deleted from database 🗑️", "danger");
+  const fullyDeleteUser = (userId: string) => {
+      openConfirm(
+          "Ban & Delete User? ⚠️",
+          "DANGER: This will delete the user completely from the database. This action CANNOT be undone!",
+          "danger",
+          async () => {
+              const { error } = await supabase.from("profiles").delete().eq("id", userId);
+              
+              if (error) {
+                  showToast(`Failed to delete: ${error.message}`, "danger");
+                  return;
+              }
+
+              setUsers(users.filter(u => u.id !== userId));
+              showToast("User permanently deleted from database 🗑️", "danger");
+          }
+      );
   };
 
   // ── Filtered Lists ─────────────────────────────────────
@@ -1345,6 +1406,36 @@ export default function ZestlyAdminPage() {
                           Save Changes
                       </button>
                   </form>
+              </div>
+          </div>, document.body
+      )}
+
+      {/* 🚀 CUSTOM CONFIRMATION MODAL (REPLACES BROWSER POPUPS) */}
+      {mounted && confirmDialog.isOpen && createPortal(
+          <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+              <div className={`bg-[#121216] w-full max-w-sm rounded-[2rem] p-6 sm:p-8 shadow-2xl border ${confirmDialog.type === 'danger' ? 'border-red-500/20' : 'border-yellow-500/20'} relative flex flex-col items-center text-center`}>
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl mb-4 border ${confirmDialog.type === 'danger' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'}`}>
+                      {confirmDialog.type === 'danger' ? '🗑️' : '⚠️'}
+                  </div>
+                  <h3 className="text-xl font-black text-white mb-2">{confirmDialog.title}</h3>
+                  <p className="text-slate-400 text-sm mb-6">{confirmDialog.desc}</p>
+                  
+                  <div className="flex gap-3 w-full">
+                      <button 
+                          onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))} 
+                          disabled={confirmDialog.isLoading}
+                          className="flex-1 py-3 rounded-xl bg-white/5 text-slate-300 font-bold text-sm hover:bg-white/10 transition-all outline-none cursor-pointer disabled:opacity-50"
+                      >
+                          Cancel
+                      </button>
+                      <button 
+                          onClick={executeConfirm} 
+                          disabled={confirmDialog.isLoading}
+                          className={`flex-1 py-3 rounded-xl text-white font-black text-sm transition-all outline-none cursor-pointer disabled:opacity-50 flex items-center justify-center ${confirmDialog.type === 'danger' ? 'bg-red-500 hover:bg-red-600 shadow-[0_0_15px_rgba(239,68,68,0.4)]' : 'bg-yellow-500 hover:bg-yellow-600 shadow-[0_0_15px_rgba(234,179,8,0.4)]'}`}
+                      >
+                          {confirmDialog.isLoading ? <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span> : "Confirm"}
+                      </button>
+                  </div>
               </div>
           </div>, document.body
       )}
