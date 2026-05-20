@@ -169,10 +169,16 @@ export default function HomeTab({ user }: HomeTabProps) {
         const randomIdx = Math.floor(Math.random() * newPosts.length);
         const postToBoost = newPosts[randomIdx];
         
+        let newViews = postToBoost.viewsCount + Math.floor(Math.random() * 8) + 2;
+        let newLikes = Math.random() > 0.6 ? postToBoost.likesCount + 1 : postToBoost.likesCount;
+        
+        // Ensure likes never exceed views
+        if (newLikes > newViews) newLikes = newViews;
+
         newPosts[randomIdx] = {
           ...postToBoost,
-          viewsCount: postToBoost.viewsCount + Math.floor(Math.random() * 8) + 2, 
-          likesCount: Math.random() > 0.6 ? postToBoost.likesCount + 1 : postToBoost.likesCount
+          viewsCount: newViews, 
+          likesCount: newLikes
         };
         return newPosts;
       });
@@ -284,6 +290,11 @@ export default function HomeTab({ user }: HomeTabProps) {
           const engineData = calculateFakeEngagement(item.id, item.created_at, isFakeOn);
           displayLikes = realLikes + engineData.likes;
           displayViews = realViews + engineData.views;
+      }
+      
+      // Safety Check: Display Likes can never be greater than Display Views
+      if (displayLikes > displayViews) {
+          displayLikes = displayViews;
       }
 
       return {
@@ -501,7 +512,10 @@ export default function HomeTab({ user }: HomeTabProps) {
 
     const isNowLiked = !post.is_liked;
     const newRealLikesCount = isNowLiked ? post.realLikesCount + 1 : Math.max(0, post.realLikesCount - 1);
-    const newDisplayLikes = isNowLiked ? post.likesCount + 1 : Math.max(0, post.likesCount - 1);
+    
+    // Safety check - Likes can't be more than views
+    let newDisplayLikes = isNowLiked ? post.likesCount + 1 : Math.max(0, post.likesCount - 1);
+    if (newDisplayLikes > post.viewsCount) newDisplayLikes = post.viewsCount;
 
     const updateMap = (pList: FeedPost[]) => pList.map(p => p.id === id ? { ...p, is_liked: isNowLiked, realLikesCount: newRealLikesCount, likesCount: newDisplayLikes } : p);
     
@@ -1119,7 +1133,7 @@ export default function HomeTab({ user }: HomeTabProps) {
           <div className="bg-white dark:bg-[#1c1c1e] border border-slate-200 dark:border-white/10 w-full sm:w-[500px] h-[85vh] sm:h-[650px] rounded-t-[2.5rem] sm:rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="shrink-0 flex justify-between items-center px-6 py-4 border-b border-slate-100 dark:border-white/10 z-10">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">Comments</h3>
-              <button onClick={() => setActiveCommentsPost(null)} className="cursor-pointer text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 w-9 h-9 rounded-full flex items-center justify-center transition-colors">✕</button>
+              <button onClick={() => setActiveCommentsPost(null)} className="cursor-pointer text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 w-9 h-9 rounded-full flex items-center justify-center transition-colors outline-none">✕</button>
             </div>
             
             <div className="flex-1 p-6 overflow-y-auto [&::-webkit-scrollbar]:hidden">
@@ -1194,7 +1208,7 @@ export default function HomeTab({ user }: HomeTabProps) {
             {replyingTo && (
               <div className="shrink-0 px-6 py-2 bg-slate-100 dark:bg-[#252528] flex justify-between items-center border-t border-slate-200 dark:border-white/10">
                 <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Replying to {replyingTo.author}...</span>
-                <button onClick={() => setReplyingTo(null)} className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white cursor-pointer">Cancel</button>
+                <button onClick={() => setReplyingTo(null)} className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white cursor-pointer outline-none">Cancel</button>
               </div>
             )}
 
@@ -1245,7 +1259,7 @@ export default function HomeTab({ user }: HomeTabProps) {
             <div className="flex-1 overflow-y-auto px-6 sm:px-10 py-10 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               {currentStep === -1 && (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-10">
-                  <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-500/10 dark:to-red-500/5 border border-orange-200 dark:border-orange-500/20 p-6 rounded-[2rem] flex justify-between items-center">
+                  <div className="bg-linear-to-r from-orange-50 to-red-50 dark:from-orange-500/10 dark:to-red-500/5 border border-orange-200 dark:border-orange-500/20 p-6 rounded-[2rem] flex justify-between items-center">
                     <div>
                       <span className="text-orange-600 dark:text-orange-400 font-extrabold text-base block">Serving Size</span>
                     </div>
@@ -1271,13 +1285,13 @@ export default function HomeTab({ user }: HomeTabProps) {
 
               {currentStep >= 0 && (
                 <div className="flex flex-col items-center justify-center h-full text-center space-y-10 animate-in zoom-in-95 duration-500">
-                  <div className="w-32 h-32 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-5xl font-black text-white shadow-[0_8px_30px_#f9731666]">{currentStep + 1}</div>
+                  <div className="w-32 h-32 rounded-full bg-linear-to-br from-orange-400 to-red-500 flex items-center justify-center text-5xl font-black text-white shadow-[0_8px_30px_#f9731666]">{currentStep + 1}</div>
                   <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-800 dark:text-white px-4 leading-relaxed">{cookModePost.steps[currentStep]}</h2>
                 </div>
               )}
             </div>
 
-            <div className="shrink-0 p-6 sm:px-10 pb-8 bg-gradient-to-t from-white dark:from-[#07070a] to-transparent relative z-20">
+            <div className="shrink-0 p-6 sm:px-10 pb-8 bg-linear-to-t from-white dark:from-[#07070a] to-transparent relative z-20">
               {currentStep === -1 ? (
                 <button onClick={() => setCurrentStep(0)} className="cursor-pointer w-full bg-slate-900 dark:bg-white text-white dark:text-black font-black text-xl py-5 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all outline-none [-webkit-tap-highlight-color:transparent] shadow-[0_8px_30px_#00000033] dark:shadow-[0_8px_30px_#ffffff33]">Let's Start Cooking</button>
               ) : (
@@ -1317,4 +1331,4 @@ export default function HomeTab({ user }: HomeTabProps) {
       )}
     </div>
   );
-}
+} 
