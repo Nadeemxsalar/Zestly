@@ -1,8 +1,10 @@
 "use client";
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase"; 
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
+// 🔥 NAYA ALGORITHM IMPORT (Ek jagah se sab control hoga)
+import { calculateFakeFollowers, calculateFakeEngagement } from "@/lib/viralEngine";
 
 // ─── Types ────────────────────────────────────────────────
 interface MetricCard {
@@ -11,7 +13,6 @@ interface MetricCard {
   sub: string;
   color: string;
   icon: string;
-  trend?: "up" | "down" | "neutral";
 }
 
 interface UserRow {
@@ -39,8 +40,11 @@ interface RecipeRow {
   author_name: string;
   type: string;
   likes_count: number; 
+  views_count: number;
   real_likes: number;  
+  real_views: number;
   engine_likes: number; 
+  engine_views: number;
   comments_count: number;
   calories: number;
   difficulty: string;
@@ -80,97 +84,6 @@ const toTitleCase = (str: string) => {
   return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
 };
 
-// 🚀 ULTRA-REALISTIC INSTAGRAM-LEVEL VIRAL ENGINE
-const getHash = (str: string) => {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
-  }
-  return Math.abs(hash);
-};
-
-const calculateFakeFollowers = (id: string, createdAt: string, isFakeOn: boolean) => {
-    if (!isFakeOn || !id || !createdAt) return 0;
-    
-    const now = Date.now();
-    const createdTime = new Date(createdAt).getTime();
-    if (createdTime > now) return 0;
-
-    const ageInMinutes = Math.floor((now - createdTime) / 60000);
-
-    // 🛑 STRICT LOCK: 180 mins (3 hours)
-    const delayMinutes = 180; 
-    if (ageInMinutes <= delayMinutes) return 0; 
-
-    const activeHours = (ageInMinutes - delayMinutes) / 60;
-    const hash = getHash(id);
-    const tier = hash % 100;
-    
-    let maxCap, speedFactor;
-
-    // 🧠 Instagram-Style Multi-Tier Scalability
-    if (tier < 60) {
-        // Normal User (60% log): 50 - 500 followers (takes ~30 days to peak)
-        maxCap = 50 + (hash % 450);
-        speedFactor = 24 * 15; 
-    } else if (tier < 90) {
-        // Influencer (30% log): 1k - 10k followers (takes ~60 days to peak)
-        maxCap = 1000 + (hash % 9000);
-        speedFactor = 24 * 30;
-    } else {
-        // Viral Star (10% log): 15k - 100k followers (takes ~90 days to peak)
-        maxCap = 15000 + (hash % 85000);
-        speedFactor = 24 * 45;
-    }
-
-    // Smooth organic saturation curve
-    const variance = 1 + ((hash % 10) / 100); // Unique 1.0 to 1.09 modifier
-    const followers = Math.floor(maxCap * (1 - Math.exp(-(activeHours * variance) / speedFactor)));
-    
-    return followers > 0 ? followers : 0;
-};
-
-const calculateFakeLikes = (id: string, createdAt: string, isFakeOn: boolean) => {
-    if (!isFakeOn || !id || !createdAt) return 0;
-    
-    const now = Date.now();
-    const createdTime = new Date(createdAt).getTime();
-    if (createdTime > now) return 0;
-
-    const ageInMinutes = Math.floor((now - createdTime) / 60000);
-
-    // 🛑 STRICT LOCK: 120 mins (2 hours)
-    const delayMinutes = 120;
-    if (ageInMinutes <= delayMinutes) return 0;
-
-    const activeHours = (ageInMinutes - delayMinutes) / 60;
-    const hash = getHash(id);
-    const tier = hash % 100;
-    
-    let maxCap, speedFactor;
-
-    // 🧠 Post Virality Tiers
-    if (tier < 50) {
-        // Normal Post: 20 - 200 likes (peaks in 1.5 days)
-        maxCap = 20 + (hash % 180);
-        speedFactor = 12; 
-    } else if (tier < 85) {
-        // Popular Post: 300 - 3,000 likes (peaks in 3 days)
-        maxCap = 300 + (hash % 2700);
-        speedFactor = 24; 
-    } else {
-        // Viral Masterpiece: 5k - 50k likes (peaks in 6 days)
-        maxCap = 5000 + (hash % 45000);
-        speedFactor = 48; 
-    }
-
-    // Initial Surge Magic: Viral posts get faster early traction
-    const surge = (tier >= 85 && activeHours < 48) ? 1.5 : 1;
-    const likes = Math.floor(maxCap * (1 - Math.exp(-(activeHours * surge) / speedFactor)));
-
-    return likes > 0 ? likes : 0;
-};
-
 // ─── Main Component ────────────────────────────────────────
 export default function ZestlyAdminPage() {
   const router = useRouter();
@@ -193,13 +106,25 @@ export default function ZestlyAdminPage() {
     storagePercent: 0,
     estimatedValue: 0, 
   });
+  
   const [users, setUsers] = useState<UserRow[]>([]);
   const [recipes, setRecipes] = useState<RecipeRow[]>([]);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [graphData, setGraphData] = useState<number[]>([]);
-  const [topRecipes, setTopRecipes] = useState<RecipeRow[]>([]);
-  
   const [serverLoad, setServerLoad] = useState(24); 
+
+  // 🚀 TRUE LAZY LOADING STATES (Infinite Scroll)
+  const [usersPage, setUsersPage] = useState(0);
+  const [hasMoreUsers, setHasMoreUsers] = useState(true);
+  const [isFetchingUsers, setIsFetchingUsers] = useState(false);
+  const userObserverRef = useRef<HTMLDivElement>(null);
+
+  const [recipesPage, setRecipesPage] = useState(0);
+  const [hasMoreRecipes, setHasMoreRecipes] = useState(true);
+  const [isFetchingRecipes, setIsFetchingRecipes] = useState(false);
+  const recipeObserverRef = useRef<HTMLDivElement>(null);
+
+  const PAGE_SIZE = 20;
 
   // UI
   const [activeSection, setActiveSection] = useState<"overview" | "users" | "recipes" | "verification" | "algorithm" | "emails" | "logs">("overview");
@@ -209,7 +134,6 @@ export default function ZestlyAdminPage() {
   const [allowSignups, setAllowSignups] = useState(true);
   const [aiBot, setAiBot] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [bannedIds, setBannedIds] = useState<Set<string>>(new Set());
 
   // Mobile Hamburger Menu
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -240,17 +164,273 @@ export default function ZestlyAdminPage() {
 
   useEffect(() => {
     setMounted(true);
-    // Simulate live server load fluctuation
     const interval = setInterval(() => {
         setServerLoad(prev => {
             const newLoad = prev + (Math.random() > 0.5 ? 2 : -2);
-            return Math.max(10, Math.min(newLoad, 80)); // Keep between 10 and 80
+            return Math.max(10, Math.min(newLoad, 80)); 
         });
     }, 3000);
     return () => clearInterval(interval);
   }, []);
 
-  // ── Export to CSV (Excel) ────────────────────────
+  // ── Format Helpers (Using the Centralized Algorithm) ─────────
+  const formatUsersData = async (profilesData: any[], isFakeOn: boolean) => {
+      const formatted = await Promise.all(
+        (profilesData || []).map(async (p: any) => {
+          const [{ count: rc }, { count: fc }, { count: fgc }] = await Promise.all([
+            supabase.from("recipes").select("*", { count: "exact", head: true }).eq("author_id", p.id),
+            supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", p.id),
+            supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", p.id),
+          ]);
+          
+          const realFollowers = fc || 0; 
+          const postsCount = rc || 0;
+          const bonusFollowers = p.bonus_followers || 0;
+          
+          // 🔥 Using centralized engine
+          const engineFollowers = calculateFakeFollowers(p.id, p.created_at, postsCount, isFakeOn);
+
+          return {
+            id: p.id,
+            full_name: p.full_name || "Unknown Chef",
+            username: p.username || "unknown",
+            email: p.email || "No Email Provided",
+            bio: p.bio || "",
+            avatar_url: p.avatar_url,
+            recipes_count: postsCount,
+            real_followers: realFollowers,
+            bonus_followers: bonusFollowers,
+            engine_followers: engineFollowers,
+            followers_count: realFollowers + bonusFollowers + engineFollowers, 
+            is_verified: p.is_verified || false,
+            verification_status: p.verification_status || 'none',
+            following_count: fgc || 0,
+            joined: p.created_at,
+            is_banned: false,
+          };
+        })
+      );
+      return formatted;
+  };
+
+  const formatRecipesData = (recipesData: any[], isFakeOn: boolean) => {
+      return (recipesData || []).map((r: any) => {
+        const realLikes = r.likes_count || 0; 
+        const realViews = r.views_count || 0; 
+        
+        // 🔥 Using centralized engine
+        const engineData = calculateFakeEngagement(r.id, r.created_at, isFakeOn);
+        
+        return {
+          id: r.id,
+          name: r.name,
+          author_name: r.author_name || "Chef",
+          type: r.type || "Veg",
+          real_likes: realLikes,
+          real_views: realViews,
+          engine_likes: engineData.likes,
+          engine_views: engineData.views,
+          likes_count: realLikes + engineData.likes, 
+          views_count: realViews + engineData.views, 
+          comments_count: r.comments_data ? r.comments_data.length : 0,
+          calories: r.calories || 0,
+          difficulty: r.difficulty || "Medium",
+          created_at: r.created_at,
+          image_url: r.image_url,
+          emoji: r.emoji || "🍲",
+        };
+      });
+  };
+
+  // ── Fetch Initial Core Data ─────────────────────────────────────
+  const fetchDashboardData = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+
+      const [
+        { count: totalUsers }, { count: totalRecipes }, { count: totalFollows },
+        { count: totalNotifs }, { count: totalPantryItems }, { count: newUsersToday },
+        { count: newRecipesToday }, { count: vegCount }, { data: settingsData },
+        { data: notifsData }, { data: initialProfiles }, { data: initialRecipes }
+      ] = await Promise.all([
+        supabase.from("profiles").select("*", { count: "exact", head: true }),
+        supabase.from("recipes").select("*", { count: "exact", head: true }),
+        supabase.from("follows").select("*", { count: "exact", head: true }),
+        supabase.from("notifications").select("*", { count: "exact", head: true }),
+        supabase.from("pantry").select("*", { count: "exact", head: true }),
+        supabase.from("profiles").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
+        supabase.from("recipes").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
+        supabase.from("recipes").select("*", { count: "exact", head: true }).eq("type", "Veg"),
+        supabase.from("app_settings").select("fake_engagement_enabled, bot_ping_count").eq("id", 1).maybeSingle(),
+        supabase.from("notifications").select("id, type, created_at").order("created_at", { ascending: false }).limit(30),
+        
+        // 🛑 TRUE LAZY LOAD: Fetch only first 20 records initially
+        supabase.from("profiles").select("id, full_name, username, bio, created_at, bonus_followers, is_verified, verification_status, avatar_url, email").order("created_at", { ascending: false }).range(0, PAGE_SIZE - 1),
+        supabase.from("recipes").select("*").order("created_at", { ascending: false }).range(0, PAGE_SIZE - 1),
+      ]);
+
+      const isFakeOn = settingsData ? settingsData.fake_engagement_enabled : true;
+      if (settingsData) {
+          setFakeMode(isFakeOn);
+          setBotPings(settingsData.bot_ping_count || 0);
+      }
+
+      // Format Initial Users & Recipes
+      const formattedUsers = await formatUsersData(initialProfiles || [], isFakeOn);
+      const formattedRecipes = formatRecipesData(initialRecipes || [], isFakeOn);
+
+      setUsers(formattedUsers.sort((a,b) => b.followers_count - a.followers_count));
+      setRecipes(formattedRecipes.sort((a,b) => b.likes_count - a.likes_count));
+      
+      setUsersPage(1);
+      setRecipesPage(1);
+      setHasMoreUsers((initialProfiles?.length || 0) === PAGE_SIZE);
+      setHasMoreRecipes((initialRecipes?.length || 0) === PAGE_SIZE);
+
+      // Combined Activity Logs
+      const combinedLogs: any[] = [];
+      (notifsData || []).forEach((n: NotifRow) => {
+        combinedLogs.push({ id: `notif_${n.id}`, action: n.type === "like" ? "Someone liked a recipe ❤️" : "A new chef followed someone 👤", timeStr: n.created_at, type: n.type === "like" ? "success" : "info", icon: n.type === "like" ? "❤️" : "👤" });
+      });
+      (initialProfiles || []).slice(0, 5).forEach((u: any) => {
+        combinedLogs.push({ id: `user_${u.id}`, action: `Chef ${u.full_name || 'Someone'} joined Zestly 🎉`, timeStr: u.created_at, type: "success", icon: "👋" });
+      });
+      (initialRecipes || []).slice(0, 5).forEach((r: any) => {
+        combinedLogs.push({ id: `recipe_${r.id}`, action: `New recipe '${r.name}' published 🍲`, timeStr: r.created_at, type: "info", icon: "🍲" });
+      });
+
+      combinedLogs.sort((a, b) => new Date(b.timeStr).getTime() - new Date(a.timeStr).getTime());
+      const activityLogs: ActivityLog[] = combinedLogs.map(log => ({
+          id: log.id, action: log.action, time: timeAgo(log.timeStr), type: log.type, icon: log.icon
+      })).slice(0, 50);
+
+      const graphPoints: number[] = [];
+      for (let i = 6; i >= 0; i--) {
+        const dStart = new Date(now);
+        dStart.setDate(now.getDate() - i);
+        dStart.setHours(0,0,0,0);
+        const dEnd = new Date(dStart);
+        dEnd.setDate(dStart.getDate() + 1);
+
+        const { count } = await supabase.from("recipes").select("*", { count: "exact", head: true }).gte("created_at", dStart.toISOString()).lt("created_at", dEnd.toISOString());
+        graphPoints.push(count || 0);
+      }
+
+      setLogs(activityLogs);
+      setGraphData(graphPoints);
+      
+      const calcValuation = ((totalUsers || 0) * 150) + ((totalRecipes || 0) * 20);
+
+      setMetrics({
+        totalUsers: totalUsers || 0,
+        totalRecipes: totalRecipes || 0,
+        totalFollows: totalFollows || 0,
+        totalNotifs: totalNotifs || 0,
+        totalPantryItems: totalPantryItems || 0,
+        newUsersToday: newUsersToday || 0,
+        newRecipesToday: newRecipesToday || 0,
+        vegCount: vegCount || 0,
+        nonVegCount: (totalRecipes || 0) - (vegCount || 0),
+        storagePercent: Math.min(100, Math.round(((totalRecipes || 0) * 0.15) % 100)),
+        estimatedValue: calcValuation,
+      });
+    } catch (err) {
+      console.error("Admin fetch error:", err);
+    }
+    setIsRefreshing(false);
+  }, []);
+
+  // ── Lazy Loading Actions ──────────────────────────────────
+  const loadMoreUsers = useCallback(async () => {
+      if (isFetchingUsers || !hasMoreUsers || isLoading) return;
+      setIsFetchingUsers(true);
+      const from = usersPage * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      const { data } = await supabase.from("profiles").select("id, full_name, username, bio, created_at, bonus_followers, is_verified, verification_status, avatar_url, email").order("created_at", { ascending: false }).range(from, to);
+      
+      if (data && data.length > 0) {
+          const formatted = await formatUsersData(data, fakeMode);
+          setUsers(prev => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const newUnique = formatted.filter(p => !existingIds.has(p.id));
+              return [...prev, ...newUnique].sort((a,b) => b.followers_count - a.followers_count);
+          });
+          setUsersPage(p => p + 1);
+          if (data.length < PAGE_SIZE) setHasMoreUsers(false);
+      } else {
+          setHasMoreUsers(false);
+      }
+      setIsFetchingUsers(false);
+  }, [usersPage, hasMoreUsers, isFetchingUsers, fakeMode, isLoading]);
+
+  const loadMoreRecipes = useCallback(async () => {
+      if (isFetchingRecipes || !hasMoreRecipes || isLoading) return;
+      setIsFetchingRecipes(true);
+      const from = recipesPage * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      const { data } = await supabase.from("recipes").select("*").order("created_at", { ascending: false }).range(from, to);
+      
+      if (data && data.length > 0) {
+          const formatted = formatRecipesData(data, fakeMode);
+          setRecipes(prev => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const newUnique = formatted.filter(p => !existingIds.has(p.id));
+              return [...prev, ...newUnique].sort((a,b) => b.likes_count - a.likes_count);
+          });
+          setRecipesPage(p => p + 1);
+          if (data.length < PAGE_SIZE) setHasMoreRecipes(false);
+      } else {
+          setHasMoreRecipes(false);
+      }
+      setIsFetchingRecipes(false);
+  }, [recipesPage, hasMoreRecipes, isFetchingRecipes, fakeMode, isLoading]);
+
+  // 🚀 Intersection Observers
+  useEffect(() => {
+      const observer = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting && activeSection === 'users' && !userSearch) loadMoreUsers();
+      }, { threshold: 0.1 });
+      if (userObserverRef.current) observer.observe(userObserverRef.current);
+      return () => observer.disconnect();
+  }, [loadMoreUsers, activeSection, userSearch]);
+
+  useEffect(() => {
+      const observer = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting && activeSection === 'recipes' && !recipeSearch) loadMoreRecipes();
+      }, { threshold: 0.1 });
+      if (recipeObserverRef.current) observer.observe(recipeObserverRef.current);
+      return () => observer.disconnect();
+  }, [loadMoreRecipes, activeSection, recipeSearch]);
+
+  // ── Auth Check ────────────────────────────
+  useEffect(() => {
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        const userEmail = session.user.email?.toLowerCase();
+        const allowedAdmins = ["nadeemxsalar@gmail.com", "realheronadeem@gmail.com"];
+
+        if (userEmail && allowedAdmins.includes(userEmail)) {
+          setAdminUser(session.user);
+          await fetchDashboardData();
+        } else {
+          alert("Access Denied: You are not authorized to view the Admin Panel! 🛑");
+          router.push("/");
+        }
+      } else {
+        router.push("/login");
+      }
+      setIsLoading(false);
+    };
+    init();
+  }, [router, fetchDashboardData]);
+
+  // ── Export to CSV ────────────────────────
   const exportToCSV = (data: any[], filename: string) => {
     if (data.length === 0) {
       showToast("No data to export", "danger");
@@ -277,190 +457,6 @@ export default function ZestlyAdminPage() {
     showToast(`Data exported to Excel (CSV) successfully! 📊`, "success");
   };
 
-  // ── Fetch All Data ─────────────────────────────────────
-  const fetchDashboardData = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-
-      const [
-        { count: totalUsers },
-        { count: totalRecipes },
-        { count: totalFollows },
-        { count: totalNotifs },
-        { count: totalPantryItems },
-        { count: newUsersToday },
-        { count: newRecipesToday },
-        { data: profilesData },
-        { data: recipesData },
-        { data: notifsData },
-        { count: vegCount },
-        { data: settingsData }, 
-      ] = await Promise.all([
-        supabase.from("profiles").select("*", { count: "exact", head: true }),
-        supabase.from("recipes").select("*", { count: "exact", head: true }),
-        supabase.from("follows").select("*", { count: "exact", head: true }),
-        supabase.from("notifications").select("*", { count: "exact", head: true }),
-        supabase.from("pantry").select("*", { count: "exact", head: true }),
-        supabase.from("profiles").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
-        supabase.from("recipes").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
-        supabase.from("profiles").select("id, full_name, username, bio, created_at, bonus_followers, is_verified, verification_status, avatar_url, email").order("created_at", { ascending: false }).limit(500),
-        supabase.from("recipes").select("*").order("created_at", { ascending: false }).limit(200), 
-        supabase.from("notifications").select("id, type, created_at").order("created_at", { ascending: false }).limit(30),
-        supabase.from("recipes").select("*", { count: "exact", head: true }).eq("type", "Veg"),
-        supabase.from("app_settings").select("fake_engagement_enabled, bot_ping_count").eq("id", 1).maybeSingle(),
-      ]);
-
-      if (settingsData) {
-          setFakeMode(settingsData.fake_engagement_enabled);
-          setBotPings(settingsData.bot_ping_count || 0);
-      }
-      const isFakeOn = settingsData ? settingsData.fake_engagement_enabled : true;
-
-      // Build user rows
-      const formattedUsers: UserRow[] = await Promise.all(
-        (profilesData || []).map(async (p: any) => {
-          const [{ count: rc }, { count: fc }, { count: fgc }] = await Promise.all([
-            supabase.from("recipes").select("*", { count: "exact", head: true }).eq("author_id", p.id),
-            supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", p.id),
-            supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", p.id),
-          ]);
-          
-          const realFollowers = fc || 0; // Pure Real organic followers
-          const bonusFollowers = p.bonus_followers || 0;
-          const engineFollowers = calculateFakeFollowers(p.id, p.created_at, isFakeOn);
-
-          return {
-            id: p.id,
-            full_name: p.full_name || "Unknown Chef",
-            username: p.username || "unknown",
-            email: p.email || "No Email Provided",
-            bio: p.bio || "",
-            avatar_url: p.avatar_url,
-            recipes_count: rc || 0,
-            real_followers: realFollowers,
-            bonus_followers: bonusFollowers,
-            engine_followers: engineFollowers,
-            followers_count: realFollowers + bonusFollowers + engineFollowers, // Combined Display
-            is_verified: p.is_verified || false,
-            verification_status: p.verification_status || 'none',
-            following_count: fgc || 0,
-            joined: p.created_at,
-            is_banned: false,
-          };
-        })
-      );
-
-      // Build recipe rows
-      const formattedRecipes: RecipeRow[] = (recipesData || []).map((r: any) => {
-        const realLikes = r.likes_count || 0; // Pure Real organic likes
-        const engineLikes = calculateFakeLikes(r.id, r.created_at, isFakeOn);
-        
-        return {
-          id: r.id,
-          name: r.name,
-          author_name: r.author_name || "Chef",
-          type: r.type || "Veg",
-          real_likes: realLikes,
-          engine_likes: engineLikes,
-          likes_count: realLikes + engineLikes, // Combined Display
-          comments_count: r.comments_data ? r.comments_data.length : 0,
-          calories: r.calories || 0,
-          difficulty: r.difficulty || "Medium",
-          created_at: r.created_at,
-          image_url: r.image_url,
-          emoji: r.emoji || "🍲",
-        };
-      });
-
-      // Combined Activity Logs
-      const combinedLogs: any[] = [];
-      (notifsData || []).forEach((n: NotifRow) => {
-        combinedLogs.push({ id: `notif_${n.id}`, action: n.type === "like" ? "Someone liked a recipe ❤️" : "A new chef followed someone 👤", timeStr: n.created_at, type: n.type === "like" ? "success" : "info", icon: n.type === "like" ? "❤️" : "👤" });
-      });
-      (profilesData || []).slice(0, 10).forEach((u: any) => {
-        combinedLogs.push({ id: `user_${u.id}`, action: `Chef ${u.full_name || 'Someone'} joined Zestly 🎉`, timeStr: u.created_at, type: "success", icon: "👋" });
-      });
-      (recipesData || []).slice(0, 10).forEach((r: any) => {
-        combinedLogs.push({ id: `recipe_${r.id}`, action: `New recipe '${r.name}' published 🍲`, timeStr: r.created_at, type: "info", icon: "🍲" });
-      });
-
-      combinedLogs.sort((a, b) => new Date(b.timeStr).getTime() - new Date(a.timeStr).getTime());
-      const activityLogs: ActivityLog[] = combinedLogs.map(log => ({
-          id: log.id, action: log.action, time: timeAgo(log.timeStr), type: log.type, icon: log.icon
-      })).slice(0, 50);
-
-      const graphPoints: number[] = [];
-      for (let i = 6; i >= 0; i--) {
-        const dStart = new Date(now);
-        dStart.setDate(now.getDate() - i);
-        dStart.setHours(0,0,0,0);
-        
-        const dEnd = new Date(dStart);
-        dEnd.setDate(dStart.getDate() + 1);
-
-        const { count } = await supabase.from("recipes")
-          .select("*", { count: "exact", head: true })
-          .gte("created_at", dStart.toISOString())
-          .lt("created_at", dEnd.toISOString());
-        
-        graphPoints.push(count || 0);
-      }
-
-      const top5 = [...formattedRecipes].sort((a, b) => b.likes_count - a.likes_count).slice(0, 5);
-
-      setUsers(formattedUsers.sort((a,b) => b.followers_count - a.followers_count));
-      setRecipes(formattedRecipes);
-      setLogs(activityLogs);
-      setGraphData(graphPoints);
-      setTopRecipes(top5);
-      
-      const calcValuation = ((totalUsers || 0) * 150) + ((totalRecipes || 0) * 20);
-
-      setMetrics({
-        totalUsers: totalUsers || 0,
-        totalRecipes: totalRecipes || 0,
-        totalFollows: totalFollows || 0,
-        totalNotifs: totalNotifs || 0,
-        totalPantryItems: totalPantryItems || 0,
-        newUsersToday: newUsersToday || 0,
-        newRecipesToday: newRecipesToday || 0,
-        vegCount: vegCount || 0,
-        nonVegCount: (totalRecipes || 0) - (vegCount || 0),
-        storagePercent: Math.min(100, Math.round(((totalRecipes || 0) * 0.15) % 100)),
-        estimatedValue: calcValuation,
-      });
-    } catch (err) {
-      console.error("Admin fetch error:", err);
-    }
-    setIsRefreshing(false);
-  }, []);
-
-  // ── Auth & Email Check ────────────────────────────
-  useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user) {
-        const userEmail = session.user.email?.toLowerCase();
-        const allowedAdmins = ["nadeemxsalar@gmail.com", "realheronadeem@gmail.com"];
-
-        if (userEmail && allowedAdmins.includes(userEmail)) {
-          setAdminUser(session.user);
-          await fetchDashboardData();
-        } else {
-          alert("Access Denied: You are not authorized to view the Admin Panel! 🛑");
-          router.push("/");
-        }
-      } else {
-        router.push("/login");
-      }
-      setIsLoading(false);
-    };
-    init();
-  }, [router, fetchDashboardData]);
-
   // ── CUSTOM CONFIRMATION HELPER ───────────────────────
   const openConfirm = (title: string, desc: string, type: "danger" | "warning", actionFn: () => Promise<void>) => {
     setConfirmDialog({ isOpen: true, title, desc, actionFn, isLoading: false, type });
@@ -476,18 +472,23 @@ export default function ZestlyAdminPage() {
     setConfirmDialog(prev => ({ ...prev, isOpen: false, isLoading: false }));
   };
 
-  // ── Actions ────────────────────────────────────────────
+  // ── Actions (WITH PROPER .select() DELETION) ────────────────────────────────────────────
   const deleteRecipe = (id: string) => {
     openConfirm(
         "Delete Recipe?",
         "This action cannot be undone. It will permanently remove this recipe from the database.",
         "danger",
         async () => {
-            const { error } = await supabase.from("recipes").delete().eq("id", id);
+            const { data, error } = await supabase.from("recipes").delete().eq("id", id).select();
             
             if (error) {
                 console.error("Delete Error:", error);
                 showToast(`Failed to delete: ${error.message}`, "danger");
+                return;
+            }
+
+            if (!data || data.length === 0) {
+                showToast("RLS Block: Supabase permissions restricted this action.", "danger");
                 return;
             }
 
@@ -507,7 +508,7 @@ export default function ZestlyAdminPage() {
       await supabase.from("app_settings").update({ fake_engagement_enabled: newMode }).eq("id", 1);
       
       setUsers(users.map(u => {
-          const engineFollowers = calculateFakeFollowers(u.id, u.joined, newMode);
+          const engineFollowers = calculateFakeFollowers(u.id, u.joined, u.recipes_count, newMode);
           return { 
               ...u, 
               engine_followers: engineFollowers,
@@ -516,11 +517,13 @@ export default function ZestlyAdminPage() {
       }));
 
       setRecipes(recipes.map(r => {
-          const engineLikes = calculateFakeLikes(r.id, r.created_at, newMode);
+          const engineData = calculateFakeEngagement(r.id, r.created_at, newMode);
           return {
               ...r,
-              engine_likes: engineLikes,
-              likes_count: r.real_likes + engineLikes
+              engine_likes: engineData.likes,
+              engine_views: engineData.views,
+              likes_count: r.real_likes + engineData.likes,
+              views_count: r.real_views + engineData.views
           };
       }));
 
@@ -532,7 +535,7 @@ export default function ZestlyAdminPage() {
       const user = users.find(u => u.id === userId);
       if (!user) return;
       
-      const engineFollowers = calculateFakeFollowers(user.id, user.joined, fakeMode);
+      const engineFollowers = calculateFakeFollowers(user.id, user.joined, user.recipes_count, fakeMode);
 
       setUsers(users.map(u => u.id === userId ? {
           ...u, 
@@ -564,10 +567,15 @@ export default function ZestlyAdminPage() {
           "Are you sure you want to completely remove this user's avatar?",
           "warning",
           async () => {
-              const { error } = await supabase.from("profiles").update({ avatar_url: null }).eq("id", userId);
+              const { data, error } = await supabase.from("profiles").update({ avatar_url: null }).eq("id", userId).select();
               
               if (error) {
                   showToast(`Failed: ${error.message}`, "danger");
+                  return;
+              }
+
+              if (!data || data.length === 0) {
+                  showToast("RLS Block: Action restricted.", "danger");
                   return;
               }
 
@@ -605,10 +613,15 @@ export default function ZestlyAdminPage() {
           "DANGER: This will delete the user completely from the database. This action CANNOT be undone!",
           "danger",
           async () => {
-              const { error } = await supabase.from("profiles").delete().eq("id", userId);
+              const { data, error } = await supabase.from("profiles").delete().eq("id", userId).select();
               
               if (error) {
                   showToast(`Failed to delete: ${error.message}`, "danger");
+                  return;
+              }
+
+              if (!data || data.length === 0) {
+                  showToast("RLS Block: Action restricted by Supabase Policies.", "danger");
                   return;
               }
 
@@ -620,18 +633,14 @@ export default function ZestlyAdminPage() {
 
   // ── Filtered Lists ─────────────────────────────────────
   const filteredUsers = users.filter((u) => u.full_name.toLowerCase().includes(userSearch.toLowerCase()) || u.username.toLowerCase().includes(userSearch.toLowerCase()));
-  const displayUsers = filteredUsers.slice(0, 50);
-
   const pendingRequests = users.filter(u => u.verification_status === 'pending');
-
   const filteredRecipes = recipes.filter((r) => r.name.toLowerCase().includes(recipeSearch.toLowerCase()));
-  const displayRecipes = filteredRecipes.slice(0, 50);
 
   const graphMax = Math.max(...graphData, 10); 
   const dayLabels = ["6d", "5d", "4d", "3d", "2d", "1d", "Today"];
 
   // ── Loading Screen ────────────────────────────────────────────
-  if (isLoading) {
+  if (isLoading && users.length === 0) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-[#07070a] gap-4 overflow-hidden">
         <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full animate-spin shadow-[0_0_20px_rgba(249,115,22,0.5)]"></div>
@@ -667,23 +676,16 @@ export default function ZestlyAdminPage() {
         
         <div className="absolute top-0 left-0 w-full h-[500px] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-900/20 via-transparent to-transparent pointer-events-none z-0" />
 
-        {/* ══════════════════════════════════════
-            SIDEBAR (Desktop Only)
-        ══════════════════════════════════════ */}
+        {/* SIDEBAR */}
         <aside className="hidden lg:flex flex-col w-64 xl:w-72 shrink-0 bg-[#0b0b0f]/80 backdrop-blur-xl border-r border-white/5 h-full overflow-y-auto z-20">
-          
           <div className="px-6 py-7 border-b border-white/5 sticky top-0 bg-[#0b0b0f] z-10">
             <button onClick={() => router.push("/")} className="flex items-center gap-3 group outline-none [-webkit-tap-highlight-color:transparent]">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-lg font-black shadow-[0_0_15px_rgba(249,115,22,0.4)]">
                 Z
               </div>
               <div className="text-left">
-                <p className="text-white font-black text-lg leading-tight group-hover:text-orange-400 transition-colors">
-                  Zestly
-                </p>
-                <p className="text-orange-500 text-[10px] font-bold uppercase tracking-widest">
-                  Admin Panel
-                </p>
+                <p className="text-white font-black text-lg leading-tight group-hover:text-orange-400 transition-colors">Zestly</p>
+                <p className="text-orange-500 text-[10px] font-bold uppercase tracking-widest">Admin Panel</p>
               </div>
             </button>
           </div>
@@ -701,30 +703,16 @@ export default function ZestlyAdminPage() {
               >
                 <span className="text-lg">{item.icon}</span>
                 {item.label}
-                {item.id === "users" && (
-                  <span className="ml-auto bg-orange-500/20 text-orange-400 text-[10px] px-2 py-0.5 rounded-full font-black">
-                    {metrics.totalUsers}
-                  </span>
-                )}
-                {item.id === "recipes" && (
-                  <span className="ml-auto bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full font-black">
-                    {metrics.totalRecipes}
-                  </span>
-                )}
-                {item.id === "verification" && pendingRequests.length > 0 && (
-                  <span className="ml-auto bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black shadow-[0_0_10px_#3b82f6]">
-                    {pendingRequests.length} Req
-                  </span>
-                )}
+                {item.id === "users" && <span className="ml-auto bg-orange-500/20 text-orange-400 text-[10px] px-2 py-0.5 rounded-full font-black">{metrics.totalUsers}</span>}
+                {item.id === "recipes" && <span className="ml-auto bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full font-black">{metrics.totalRecipes}</span>}
+                {item.id === "verification" && pendingRequests.length > 0 && <span className="ml-auto bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black shadow-[0_0_10px_#3b82f6]">{pendingRequests.length} Req</span>}
               </button>
             ))}
           </nav>
 
           <div className="p-4 border-t border-white/5 sticky bottom-0 bg-[#0b0b0f] z-10">
             <div className="bg-white/[0.03] border border-orange-500/20 rounded-2xl p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center font-black text-sm shadow-inner shrink-0">
-                {initial}
-              </div>
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center font-black text-sm shadow-inner shrink-0">{initial}</div>
               <div className="min-w-0 text-left">
                 <p className="text-[10px] text-orange-400 font-bold uppercase tracking-wider">Super Admin</p>
                 <p className="text-white font-black text-sm truncate">{adminUser?.user_metadata?.full_name || "Head Chef"}</p>
@@ -734,9 +722,7 @@ export default function ZestlyAdminPage() {
           </div>
         </aside>
 
-        {/* ══════════════════════════════════════
-            MAIN AREA
-        ══════════════════════════════════════ */}
+        {/* MAIN AREA */}
         <main className="flex-1 flex flex-col h-full overflow-y-auto relative z-10 scroll-smooth">
           
           <header className="sticky top-0 z-40 bg-[#07070a]/90 backdrop-blur-xl border-b border-white/5 px-4 sm:px-6 py-4 flex justify-between items-center gap-4">
@@ -746,7 +732,6 @@ export default function ZestlyAdminPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
                 </svg>
               </button>
-              
               <div>
                 <h1 className="text-white font-black text-lg leading-tight flex items-center gap-2">
                   {navItems.find((n) => n.id === activeSection)?.icon} {navItems.find((n) => n.id === activeSection)?.label}
@@ -786,9 +771,7 @@ export default function ZestlyAdminPage() {
                     { label: "Total Chefs", value: formatNum(metrics.totalUsers), sub: `+${metrics.newUsersToday} today`, icon: "👥", color: "orange" },
                     { label: "Recipes", value: formatNum(metrics.totalRecipes), sub: `+${metrics.newRecipesToday} today`, icon: "🍲", color: "red" },
                     { label: "Connections", value: formatNum(metrics.totalFollows), sub: "Total follows", icon: "🔗", color: "yellow" },
-                    
                     { label: "App Valuation", value: `₹${formatNum(metrics.estimatedValue)}`, sub: "Estimated worth", icon: "💎", color: "indigo" },
-                    
                     { label: "Notifications", value: formatNum(metrics.totalNotifs), sub: "All time", icon: "🔔", color: "blue" },
                     { label: "Bot Pings", value: formatNum(botPings), sub: "Supabase Alive", icon: "🤖", color: "purple" },
                   ].map((m, i) => (
@@ -883,7 +866,7 @@ export default function ZestlyAdminPage() {
             )}
 
             {/* ════════════════════════════════════
-                USERS SECTION
+                USERS SECTION (Infinite Scroll)
             ════════════════════════════════════ */}
             {activeSection === "users" && (
               <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -894,15 +877,13 @@ export default function ZestlyAdminPage() {
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <div className="bg-white/[0.03] border border-white/5 px-4 py-3.5 rounded-2xl text-xs font-bold text-slate-400 whitespace-nowrap">
-                      {filteredUsers.length} / {metrics.totalUsers} chefs
+                      {metrics.totalUsers} total chefs
                     </div>
                     <button onClick={() => exportToCSV(users, "Zestly_Users")} className="bg-green-500/10 border border-green-500/20 hover:bg-green-500 hover:text-white text-green-400 px-4 py-3.5 rounded-2xl text-xs font-bold transition-all cursor-pointer outline-none">
                       Export CSV
                     </button>
                   </div>
                 </div>
-                
-                {filteredUsers.length > 50 && (<p className="text-xs text-orange-400 font-bold px-2">Showing top 50 matches.</p>)}
 
                 <div className="hidden md:block bg-white/[0.02] border border-white/5 rounded-[2rem] overflow-hidden">
                   <div className="overflow-x-auto">
@@ -916,15 +897,15 @@ export default function ZestlyAdminPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/[0.03]">
-                        {displayUsers.length === 0 ? (
+                        {filteredUsers.length === 0 ? (
                           <tr><td colSpan={6} className="text-center py-16 text-slate-500 text-sm">No chefs found</td></tr>
                         ) : (
-                          displayUsers.map((u, index) => (
+                          filteredUsers.map((u, index) => (
                             <tr key={u.id} className="hover:bg-white/[0.02] transition-colors group">
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-3">
                                   <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-sm font-black shrink-0 overflow-hidden relative">
-                                    {index === 0 && <div className="absolute -top-1 -right-1 text-xs rotate-12 drop-shadow-md z-10">👑</div>}
+                                    {index === 0 && !userSearch && <div className="absolute -top-1 -right-1 text-xs rotate-12 drop-shadow-md z-10">👑</div>}
                                     {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" /> : u.full_name.charAt(0).toUpperCase()}
                                   </div>
                                   <div>
@@ -952,14 +933,14 @@ export default function ZestlyAdminPage() {
                 </div>
 
                 <div className="md:hidden space-y-3">
-                  {displayUsers.length === 0 ? (
+                  {filteredUsers.length === 0 ? (
                     <div className="text-center py-16 text-slate-500 bg-white/[0.02] rounded-3xl border border-white/5 text-sm">No chefs found</div>
                   ) : (
-                    displayUsers.map((u, index) => (
+                    filteredUsers.map((u, index) => (
                       <div key={u.id} className="bg-white/[0.02] border border-white/5 rounded-3xl p-4 hover:border-orange-500/20 transition-all">
                         <div className="flex items-start gap-3">
                           <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-lg font-black shrink-0 overflow-hidden">
-                            {index === 0 && <div className="absolute -top-1 -right-1 text-sm rotate-12 drop-shadow-md z-10">👑</div>}
+                            {index === 0 && !userSearch && <div className="absolute -top-1 -right-1 text-sm rotate-12 drop-shadow-md z-10">👑</div>}
                             {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover" /> : u.full_name.charAt(0).toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -987,6 +968,14 @@ export default function ZestlyAdminPage() {
                     ))
                   )}
                 </div>
+
+                {/* 🚀 Users Infinite Scroll Target */}
+                {!userSearch && (
+                   <div ref={userObserverRef} className="w-full flex flex-col items-center justify-center py-4">
+                     {isFetchingUsers && <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>}
+                     {!hasMoreUsers && users.length > 0 && <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-2">End of Chefs List 🏁</p>}
+                   </div>
+                )}
               </div>
             )}
 
@@ -1047,7 +1036,7 @@ export default function ZestlyAdminPage() {
             )}
 
             {/* ════════════════════════════════════
-                RECIPES SECTION
+                RECIPES SECTION (Infinite Scroll)
             ════════════════════════════════════ */}
             {activeSection === "recipes" && (
               <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -1058,15 +1047,13 @@ export default function ZestlyAdminPage() {
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <div className="bg-white/[0.03] border border-white/5 px-4 py-3.5 rounded-2xl text-xs font-bold text-slate-400 whitespace-nowrap">
-                      {filteredRecipes.length} recipes
+                      {metrics.totalRecipes} total recipes
                     </div>
                     <button onClick={() => exportToCSV(recipes, "Zestly_Recipes")} className="bg-green-500/10 border border-green-500/20 hover:bg-green-500 hover:text-white text-green-400 px-4 py-3.5 rounded-2xl text-xs font-bold transition-all cursor-pointer outline-none">
                       Export CSV
                     </button>
                   </div>
                 </div>
-
-                {filteredRecipes.length > 50 && (<p className="text-xs text-orange-400 font-bold px-2">Showing top 50 matches.</p>)}
 
                 <div className="hidden lg:block bg-white/[0.02] border border-white/5 rounded-[2rem] overflow-hidden">
                   <div className="overflow-x-auto">
@@ -1075,7 +1062,7 @@ export default function ZestlyAdminPage() {
                         <tr className="text-slate-500 text-[10px] uppercase tracking-widest">
                           <th className="px-6 py-4 font-bold">Recipe</th>
                           <th className="px-4 py-4 font-bold">Author</th>
-                          <th className="px-4 py-4 font-bold text-center">❤️</th>
+                          <th className="px-4 py-4 font-bold text-center">Engagement</th>
                           <th className="px-4 py-4 font-bold text-center">💬</th>
                           <th className="px-4 py-4 font-bold text-center">Type</th>
                           <th className="px-4 py-4 font-bold text-center">Difficulty</th>
@@ -1084,10 +1071,10 @@ export default function ZestlyAdminPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/[0.03]">
-                        {displayRecipes.length === 0 ? (
+                        {filteredRecipes.length === 0 ? (
                           <tr><td colSpan={8} className="text-center py-16 text-slate-500 text-sm">No recipes found</td></tr>
                         ) : (
-                          displayRecipes.map((r) => (
+                          filteredRecipes.map((r) => (
                             <tr key={r.id} className="hover:bg-white/[0.02] transition-colors">
                               <td className="px-6 py-3.5">
                                 <div className="flex items-center gap-3">
@@ -1098,7 +1085,12 @@ export default function ZestlyAdminPage() {
                                 </div>
                               </td>
                               <td className="px-4 py-3.5"><p className="text-slate-400 text-sm">{r.author_name}</p></td>
-                              <td className="px-4 py-3.5 text-center"><span className="text-red-400 font-black text-sm">{r.likes_count}</span></td>
+                              <td className="px-4 py-3.5 text-center">
+                                <div className="flex flex-col items-center">
+                                  <span className="text-red-400 font-black text-sm">❤️ {formatNum(r.likes_count)}</span>
+                                  <span className="text-slate-500 text-[10px] font-bold">👁️ {formatNum(r.views_count)} Views</span>
+                                </div>
+                              </td>
                               <td className="px-4 py-3.5 text-center"><span className="text-blue-400 font-bold text-sm">{r.comments_count}</span></td>
                               <td className="px-4 py-3.5 text-center">
                                 <span className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${r.type === "Veg" ? "bg-green-500/10 text-green-400 border-green-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>{r.type}</span>
@@ -1118,11 +1110,11 @@ export default function ZestlyAdminPage() {
                   </div>
                 </div>
 
-                <div className="md:hidden space-y-3">
-                  {displayRecipes.length === 0 ? (
+                <div className="lg:hidden space-y-3">
+                  {filteredRecipes.length === 0 ? (
                     <div className="text-center py-16 text-slate-500 bg-white/[0.02] rounded-3xl border border-white/5 text-sm">No recipes found</div>
                   ) : (
-                    displayRecipes.map((r) => (
+                    filteredRecipes.map((r) => (
                       <div key={r.id} className="bg-white/[0.02] border border-white/5 rounded-3xl overflow-hidden hover:border-orange-500/20 transition-all">
                         <div className="w-full h-36 bg-white/5 flex items-center justify-center relative overflow-hidden">
                           {r.image_url ? (
@@ -1141,7 +1133,8 @@ export default function ZestlyAdminPage() {
                         <div className="p-3 flex items-center justify-between flex-wrap gap-2">
                           <p className="text-slate-400 text-xs font-medium">{r.author_name} • {timeAgo(r.created_at)}</p>
                           <div className="flex items-center gap-3 text-xs font-bold">
-                            <span className="text-red-400">❤️ {r.likes_count}</span>
+                            <span className="text-slate-300">👁️ {formatNum(r.views_count)}</span>
+                            <span className="text-red-400">❤️ {formatNum(r.likes_count)}</span>
                             <span className="text-blue-400">💬 {r.comments_count}</span>
                           </div>
                         </div>
@@ -1149,6 +1142,14 @@ export default function ZestlyAdminPage() {
                     ))
                   )}
                 </div>
+
+                {/* 🚀 Recipes Infinite Scroll Target */}
+                {!recipeSearch && (
+                   <div ref={recipeObserverRef} className="w-full flex flex-col items-center justify-center py-4">
+                     {isFetchingRecipes && <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>}
+                     {!hasMoreRecipes && recipes.length > 0 && <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-2">End of Recipes 🏁</p>}
+                   </div>
+                )}
               </div>
             )}
 
@@ -1221,11 +1222,11 @@ export default function ZestlyAdminPage() {
                     <input type="text" placeholder="Search user to hack..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)} className="w-full sm:w-64 bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-indigo-500/50" />
                   </div>
 
-                  <div className="space-y-3 pr-2 overflow-y-auto">
-                    {displayUsers.length === 0 ? (
+                  <div className="space-y-3 pr-2 overflow-y-auto max-h-[600px] [&::-webkit-scrollbar]:hidden">
+                    {filteredUsers.length === 0 ? (
                       <p className="text-center text-slate-500 py-10">No users found.</p>
                     ) : (
-                      displayUsers.map((u) => (
+                      filteredUsers.map((u) => (
                         <div key={u.id} className="bg-black/40 border border-white/5 p-4 rounded-2xl flex flex-col xl:flex-row gap-4 items-start xl:items-center justify-between hover:border-indigo-500/30 transition-all">
                           
                           <div className="flex items-center gap-3 w-full xl:w-1/4">
@@ -1315,7 +1316,7 @@ export default function ZestlyAdminPage() {
                     )}
                     <div className="flex items-center gap-2 text-slate-600 text-xs pt-2">
                       <span className="text-orange-500 animate-pulse font-black">_</span>
-                      Zestly Engine V4.0 • {new Date().toLocaleTimeString()}
+                      Zestly Engine V5.0 • {new Date().toLocaleTimeString()}
                     </div>
                   </div>
                 </div>
@@ -1410,7 +1411,7 @@ export default function ZestlyAdminPage() {
           </div>, document.body
       )}
 
-      {/* 🚀 CUSTOM CONFIRMATION MODAL (REPLACES BROWSER POPUPS) */}
+      {/* 🚀 CUSTOM CONFIRMATION MODAL */}
       {mounted && confirmDialog.isOpen && createPortal(
           <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
               <div className={`bg-[#121216] w-full max-w-sm rounded-[2rem] p-6 sm:p-8 shadow-2xl border ${confirmDialog.type === 'danger' ? 'border-red-500/20' : 'border-yellow-500/20'} relative flex flex-col items-center text-center`}>

@@ -3,6 +3,8 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
+// 🔥 NAYA ALGORITHM IMPORT (Centralized for Admin & Home)
+import { calculateFakeFollowers, calculateFakeEngagement } from "@/lib/viralEngine";
 
 // ─── TYPES ────────────────────────────────────────────────
 interface HomeTabProps {
@@ -68,98 +70,11 @@ const formatNum = (n: number) => {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 };
 
-// 🚀 ULTRA-REALISTIC INSTAGRAM-LEVEL VIRAL ENGINE
-const getHash = (str: string) => {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
-  }
-  return Math.abs(hash);
-};
-
-const calculateFakeFollowers = (id: string, createdAt: string, isFakeOn: boolean) => {
-    if (!isFakeOn || !id || !createdAt) return 0;
-    
-    const now = Date.now();
-    const createdTime = new Date(createdAt).getTime();
-    if (createdTime > now) return 0;
-
-    const ageInMinutes = Math.floor((now - createdTime) / 60000);
-
-    // 🛑 STRICT LOCK: 180 mins (3 hours)
-    const delayMinutes = 180; 
-    if (ageInMinutes <= delayMinutes) return 0; 
-
-    const activeHours = (ageInMinutes - delayMinutes) / 60;
-    const hash = getHash(id);
-    const tier = hash % 100;
-    
-    let maxCap, speedFactor;
-
-    // 🧠 Instagram-Style Multi-Tier Scalability
-    if (tier < 60) {
-        maxCap = 50 + (hash % 450);
-        speedFactor = 24 * 15; 
-    } else if (tier < 90) {
-        maxCap = 1000 + (hash % 9000);
-        speedFactor = 24 * 30;
-    } else {
-        maxCap = 15000 + (hash % 85000);
-        speedFactor = 24 * 45;
-    }
-
-    const variance = 1 + ((hash % 10) / 100); 
-    const followers = Math.floor(maxCap * (1 - Math.exp(-(activeHours * variance) / speedFactor)));
-    
-    return followers > 0 ? followers : 0;
-};
-
-const calculateFakeLikes = (id: string, createdAt: string, isFakeOn: boolean) => {
-    if (!isFakeOn || !id || !createdAt) return 0;
-    
-    const now = Date.now();
-    const createdTime = new Date(createdAt).getTime();
-    if (createdTime > now) return 0;
-
-    const ageInMinutes = Math.floor((now - createdTime) / 60000);
-
-    // 🛑 STRICT LOCK: 120 mins (2 hours)
-    const delayMinutes = 120;
-    if (ageInMinutes <= delayMinutes) return 0;
-
-    const activeHours = (ageInMinutes - delayMinutes) / 60;
-    const hash = getHash(id);
-    const tier = hash % 100;
-    
-    let maxCap, speedFactor;
-
-    // 🧠 Post Virality Tiers
-    if (tier < 50) {
-        maxCap = 20 + (hash % 180);
-        speedFactor = 12; 
-    } else if (tier < 85) {
-        maxCap = 300 + (hash % 2700);
-        speedFactor = 24; 
-    } else {
-        maxCap = 5000 + (hash % 45000);
-        speedFactor = 48; 
-    }
-
-    const surge = (tier >= 85 && activeHours < 48) ? 1.5 : 1;
-    const likes = Math.floor(maxCap * (1 - Math.exp(-(activeHours * surge) / speedFactor)));
-
-    return likes > 0 ? likes : 0;
-};
-
-
-// 🚀 REUSABLE VERIFIED BADGE COMPONENT (FIXED POSITIONING)
+// 🚀 REUSABLE VERIFIED BADGE COMPONENT
 const VerifiedBadge = ({ sizeClass = "w-5 h-5", noTooltip = false, containerClass = "" }: { sizeClass?: string, noTooltip?: boolean, containerClass?: string }) => (
     <div className={`relative flex items-center justify-center group shrink-0 cursor-pointer ${containerClass}`} title={noTooltip ? "" : "Official Verified Creator"}>
-        {/* 🔥 Soft Animated Glow */}
         <div className="absolute inset-0 bg-orange-500 rounded-full blur-[6px] opacity-40 animate-pulse pointer-events-none"></div>
-        {/* ✨ Floating Light Ring */}
         <div className="absolute inset-0 rounded-full border border-orange-300/30 scale-110 animate-ping pointer-events-none"></div>
-        {/* ✅ Exact Instagram-Type Rosette Badge */}
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={`${sizeClass} relative z-10 drop-shadow-[0_4px_12px_rgba(249,115,22,0.55)] transition-all duration-300 group-hover:scale-110`}>
             <defs>
                 <linearGradient id="zestly-premium-badge" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -209,6 +124,7 @@ export default function HomeTab({ user }: HomeTabProps) {
   const [replyingTo, setReplyingTo] = useState<{ commentId: string, author: string, isSubReply?: boolean } | null>(null);
 
   const [cookModePost, setCookModePost] = useState<FeedPost | null>(null);
+  const [focusedPost, setFocusedPost] = useState<FeedPost | null>(null); // Post Detail Modal State
   const [portions, setPortions] = useState(1);
   const [currentStep, setCurrentStep] = useState(-1);
 
@@ -364,11 +280,10 @@ export default function HomeTab({ user }: HomeTabProps) {
       let displayLikes = realLikes;
       let displayViews = realViews;
 
-      // 🛑 BUG FIXED: Now properly using the Instagram Engine!
       if (isFakeOn) {
-          const engineLikes = calculateFakeLikes(item.id, item.created_at, isFakeOn);
-          displayLikes = realLikes + engineLikes;
-          displayViews = realViews + (engineLikes > 0 ? engineLikes * (Math.floor(Math.random() * 4) + 6) : 0);
+          const engineData = calculateFakeEngagement(item.id, item.created_at, isFakeOn);
+          displayLikes = realLikes + engineData.likes;
+          displayViews = realViews + engineData.views;
       }
 
       return {
@@ -408,14 +323,17 @@ export default function HomeTab({ user }: HomeTabProps) {
 
     const { data: profilesData } = await supabase.from("profiles").select("*").order("bonus_followers", { ascending: false }).limit(10);
     
-    // 🛑 BUG FIXED: No more hardcoded 1200 followers! Now using the engine.
     if (profilesData && profilesData.length > 0) {
-      const formattedChefs = profilesData.map(p => ({
-          ...p,
-          followers: isFakeOn ? (p.followers_count || 0) + (p.bonus_followers || 0) + calculateFakeFollowers(p.id, p.created_at, isFakeOn) : (p.followers_count || 0),
-          is_verified: p.is_verified || false
-      })).sort((a, b) => b.followers - a.followers);
-      setTrendingChefs(formattedChefs);
+      const formattedChefs = await Promise.all(profilesData.map(async p => {
+          const { count: rc } = await supabase.from("recipes").select("*", { count: "exact", head: true }).eq("author_id", p.id);
+          const postsCount = rc || 0;
+          return {
+            ...p,
+            followers: isFakeOn ? (p.followers_count || 0) + (p.bonus_followers || 0) + calculateFakeFollowers(p.id, p.created_at, postsCount, isFakeOn) : (p.followers_count || 0),
+            is_verified: p.is_verified || false
+          };
+      }));
+      setTrendingChefs(formattedChefs.sort((a, b) => b.followers - a.followers));
     } else {
       setTrendingChefs([{ id: "mock1", full_name: "Chef Zestly", followers: 12500, is_verified: true }]);
     }
@@ -495,12 +413,21 @@ export default function HomeTab({ user }: HomeTabProps) {
     await supabase.from("profiles").update({ saved_recipes: updatedSavedIds }).eq("id", user.id);
   };
 
+  // 🚀 INSTANT PROFILE LOAD WITH SKELETON
   const openChefProfile = async (chefId: string, fallbackName: string) => {
     if (!checkAuth()) return;
     if (chefId.startsWith("mock")) {
       showToast("This is a demo profile! Create real recipes to see real profiles. ✨");
       return;
     }
+
+    setViewingChef({
+      id: chefId,
+      full_name: fallbackName,
+      isLoading: true
+    });
+    setViewingChefRecipes([]);
+    setIsFollowLoading(true);
 
     const { data: profileData } = await supabase.from("profiles").select("*").eq("id", chefId).single();
     const { count: followersCount } = await supabase.from("follows").select("*", { count: 'exact', head: true }).eq("following_id", chefId);
@@ -512,15 +439,15 @@ export default function HomeTab({ user }: HomeTabProps) {
     
     const realF = followersCount || 0;
     const bonusF = profileData?.bonus_followers || 0;
-    
-    // 🛑 BUG FIXED: Now properly scaling followers instead of flat + 1200
-    const engineF = calculateFakeFollowers(chefId, profileData?.created_at, fakeMode);
+    const engineF = calculateFakeFollowers(chefId, profileData?.created_at, formattedChefPosts.length, fakeMode);
     const finalFollowers = fakeMode ? realF + bonusF + engineF : realF;
 
-    setViewingChefRecipes(formattedChefPosts);
     setIsFollowingChef(!!followCheck);
+    setViewingChefRecipes(formattedChefPosts);
+    
     setViewingChef({
       id: chefId,
+      isLoading: false,
       full_name: profileData?.full_name || fallbackName,
       username: profileData?.username || `zestly_${chefId.substring(0, 4)}`,
       bio: profileData?.bio || "Passionate Chef at Zestly 🍳",
@@ -530,10 +457,12 @@ export default function HomeTab({ user }: HomeTabProps) {
       postsCount: formattedChefPosts.length,
       is_verified: profileData?.is_verified || false 
     });
+    
+    setIsFollowLoading(false);
   };
 
   const handleFollowToggle = async () => {
-    if (!checkAuth() || !viewingChef) return;
+    if (!checkAuth() || !viewingChef || viewingChef.isLoading) return;
     if (viewingChef.id === user.id) {
       showToast("You can't follow yourself! 😅");
       return;
@@ -566,11 +495,11 @@ export default function HomeTab({ user }: HomeTabProps) {
 
   const toggleLike = async (id: string) => {
     if (!checkAuth()) return;
-    const post = posts.find(p => p.id === id) || searchedRecipes.find(p => p.id === id);
+    let post = posts.find(p => p.id === id) || searchedRecipes.find(p => p.id === id) || viewingChefRecipes.find(p => p.id === id);
+    if (!post && focusedPost?.id === id) post = focusedPost;
     if (!post) return;
 
     const isNowLiked = !post.is_liked;
-    
     const newRealLikesCount = isNowLiked ? post.realLikesCount + 1 : Math.max(0, post.realLikesCount - 1);
     const newDisplayLikes = isNowLiked ? post.likesCount + 1 : Math.max(0, post.likesCount - 1);
 
@@ -578,6 +507,8 @@ export default function HomeTab({ user }: HomeTabProps) {
     
     setPosts(updateMap);
     setSearchedRecipes(updateMap);
+    setViewingChefRecipes(updateMap);
+    if (focusedPost?.id === id) setFocusedPost({ ...focusedPost, is_liked: isNowLiked, realLikesCount: newRealLikesCount, likesCount: newDisplayLikes });
     
     const { error } = await supabase.from("recipes").update({ 
       is_liked: isNowLiked, 
@@ -600,6 +531,8 @@ export default function HomeTab({ user }: HomeTabProps) {
       const updateMap = (pList: FeedPost[]) => pList.map(p => p.id === post.id ? { ...p, viewsCount: p.viewsCount + 1, realViewsCount: p.realViewsCount + 1 } : p);
       setPosts(updateMap);
       setSearchedRecipes(updateMap);
+      setViewingChefRecipes(updateMap);
+      if (focusedPost?.id === post.id) setFocusedPost({ ...focusedPost, viewsCount: focusedPost.viewsCount + 1, realViewsCount: focusedPost.realViewsCount + 1 });
       await supabase.from("recipes").update({ views_count: post.realViewsCount + 1 }).eq("id", post.id);
   };
 
@@ -671,6 +604,9 @@ export default function HomeTab({ user }: HomeTabProps) {
       const updateMap = (pList: FeedPost[]) => pList.map(p => p.id === activeCommentsPost.id ? updatedPost : p);
       setPosts(updateMap);
       setSearchedRecipes(updateMap);
+      setViewingChefRecipes(updateMap);
+      if (focusedPost?.id === activeCommentsPost.id) setFocusedPost(updatedPost);
+      
       setActiveCommentsPost(updatedPost);
       setCommentInput("");
       setReplyingTo(null);
@@ -700,9 +636,103 @@ export default function HomeTab({ user }: HomeTabProps) {
 
   const featuredPost = posts.length > 0 ? posts[0] : null;
 
+  // 🚀 REUSABLE FEED CARD COMPONENT (Used in Main Feed and Focused Modal)
+  const renderFeedCard = (post: FeedPost, isFocusedView = false) => (
+    <div key={post.id} className={`flex flex-col w-full bg-white dark:bg-[#0b0b0e] ${!isFocusedView ? 'border-b-[8px] sm:border-b-0 border-slate-100 dark:border-[#121216] sm:bg-transparent' : ''}`}>
+      <div className={`relative bg-white dark:bg-[#0b0b0e] ${!isFocusedView ? 'border-y sm:border border-slate-200/80 dark:border-white/10 sm:rounded-[2.5rem] overflow-hidden shadow-none sm:shadow-md dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20' : 'rounded-none'} group/card flex flex-col`}>
+        
+        {/* Author Header */}
+        <div className="py-3 px-4 sm:p-5 flex justify-between items-center bg-transparent border-b border-slate-100 dark:border-white/5 z-10">
+          <div onClick={() => { if(!isFocusedView) openChefProfile(post.authorId || "mock", post.authorName); }} className="flex items-center gap-3 cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+            <div className="relative shrink-0 w-9 h-9">
+              <div className="w-full h-full rounded-full bg-gradient-to-tr from-orange-500 to-red-500 p-[2px] shadow">
+                <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-xs font-black text-slate-900 dark:text-white uppercase transition-colors overflow-hidden">
+                  {post.authorAvatar ? <img src={post.authorAvatar} className="w-full h-full object-cover" /> : post.authorName.charAt(0).toUpperCase()}
+                </div>
+              </div>
+              {post.authorIsVerified && (
+                  <div className="absolute bottom-0 right-0 z-20">
+                      <VerifiedBadge sizeClass="w-[14px] h-[14px]" noTooltip={true}/>
+                  </div>
+              )}
+            </div>
+            <div className="flex flex-col">
+              <div className="text-sm text-slate-900 dark:text-white font-bold transition-colors leading-tight group-hover:underline flex items-center gap-1.5">
+                  {post.authorName}
+              </div>
+              <p className="text-[10px] text-slate-500 font-medium">Zestly Chef</p>
+            </div>
+          </div>
+          <button className="text-slate-400 hover:text-slate-600 dark:hover:text-white outline-none [-webkit-tap-highlight-color:transparent]">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm-7 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm14 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>
+          </button>
+        </div>
+
+        {/* Media Block - Click to open Cook Mode */}
+        <div onClick={() => openCookMode(post)} className={`w-full aspect-square sm:aspect-auto sm:h-72 relative flex items-center justify-center cursor-pointer sm:overflow-hidden outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${!post.imageUrl ? `bg-gradient-to-br ${post.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
+          {post.imageUrl ? <img src={post.imageUrl} className="w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" /> : <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{post.emoji}</span>}
+          {/* COOK OVERLAY */}
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center justify-center">
+            <span className="bg-orange-500 text-white font-bold px-4 py-2 rounded-full shadow-lg shadow-orange-500/50 flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Cook Now
+            </span>
+          </div>
+          <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              {formatNum(post.viewsCount)}
+          </div>
+        </div>
+
+        <div className="pt-3 pb-5 px-4 sm:p-5 flex-1 flex flex-col justify-between bg-transparent transition-colors z-10">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-4">
+                <button onClick={() => toggleLike(post.id)} className="group transition-transform active:scale-125 cursor-pointer outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+                  <svg className={`w-7 h-7 transition-all duration-300 outline-none focus:outline-none ${post.is_liked ? 'fill-red-500 text-red-500 scale-110' : 'text-slate-900 dark:text-white group-hover:text-red-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                </button>
+                
+                <button onClick={() => openComments(post)} className="group flex items-center gap-1.5 cursor-pointer transition-colors active:scale-95 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+                  <svg className="w-7 h-7 text-slate-900 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                  {post.commentsCount > 0 && <span className="text-[13px] font-bold text-slate-700 dark:text-slate-300">{post.commentsCount}</span>}
+                </button>
+
+                <button onClick={() => handleShare(post.name)} className="cursor-pointer active:scale-110 transition-transform outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
+                  <svg className="w-7 h-7 text-slate-900 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+                </button>
+              </div>
+              
+              <button onClick={() => toggleSave(post.id)} className={`outline-none active:scale-90 transition-all duration-300 ${savedRecipeIds.includes(post.id) ? 'text-orange-500' : 'text-slate-900 dark:text-white'}`}>
+                <svg className="w-7 h-7" fill={savedRecipeIds.includes(post.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+              </button>
+            </div>
+            
+            <div className="flex items-center gap-3 mb-1.5">
+                <p className="font-bold text-sm text-slate-900 dark:text-white">{formatNum(post.likesCount)} likes</p>
+                <span className="text-slate-300 dark:text-slate-700">•</span>
+                <p className="font-bold text-sm text-slate-500 flex items-center gap-1"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg> {formatNum(post.viewsCount)}</p>
+            </div>
+            <div className="text-sm text-slate-900 dark:text-white leading-relaxed line-clamp-2">
+                <strong className="mr-1.5 font-bold cursor-pointer hover:underline inline-flex items-center gap-1" onClick={() => { if(!isFocusedView) openChefProfile(post.authorId || "mock", post.authorName); }}>
+                    {post.authorName}
+                </strong> 
+                {post.name} - The ultimate {post.type} treat! 🥘✨
+            </div>
+            
+            {post.commentsCount > 0 && (
+              <p onClick={() => openComments(post)} className="text-[13px] text-slate-500 mt-1.5 cursor-pointer font-medium hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+                View all {post.commentsCount} comments
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6 pb-24 relative max-w-full overflow-x-hidden cursor-default selection:bg-orange-500/10 w-full flex flex-col items-center">
-      
+    // 🚀 ADDED 'select-none' block text selection/Google Suggest, BUT input fields have 'select-text' inherently
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6 pb-24 relative max-w-full overflow-x-hidden cursor-default select-none w-full flex flex-col items-center">
+
       {/* SEARCH BAR WITH CANCEL BUTTON */}
       <div className="px-4 sm:px-1 pt-6 w-full max-w-5xl flex items-center gap-3">
         <div className="relative bg-white dark:bg-[#1c1c1e] border border-slate-200 dark:border-white/5 p-1 rounded-full flex-1 flex items-center shadow-sm">
@@ -715,7 +745,7 @@ export default function HomeTab({ user }: HomeTabProps) {
             onFocus={() => setIsSearchActive(true)}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search chefs or recipes..."
-            className="flex-1 w-full bg-transparent text-slate-900 dark:text-white font-medium px-2 py-3 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 cursor-text"
+            className="flex-1 w-full bg-transparent text-slate-900 dark:text-white font-medium px-2 py-3 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 cursor-text select-text"
           />
           {searchQuery && (
             <button onClick={() => setSearchQuery("")} className="p-3 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer active:scale-90 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
@@ -754,7 +784,6 @@ export default function HomeTab({ user }: HomeTabProps) {
                       )}
                     </div>
                   </div>
-                  {/* 🚀 BADGE INTEGRATION IN TRENDING LIST ON DP */}
                   {chef.is_verified && (
                       <div className="absolute bottom-0 right-0 z-20">
                           <VerifiedBadge sizeClass="w-[18px] h-[18px] sm:w-[22px] sm:h-[22px]" noTooltip={true} />
@@ -798,7 +827,6 @@ export default function HomeTab({ user }: HomeTabProps) {
                       <div className="w-full h-full rounded-full bg-gradient-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-xl font-bold overflow-hidden">
                         {chef.avatar_url ? <img src={chef.avatar_url} className="w-full h-full object-cover" /> : chef.full_name.charAt(0).toUpperCase()}
                       </div>
-                      {/* 🚀 BADGE INTEGRATION ON DP IN SEARCH */}
                       {chef.is_verified && (
                           <div className="absolute bottom-0 right-0 z-20">
                               <VerifiedBadge sizeClass="w-[18px] h-[18px]" noTooltip={true}/>
@@ -821,7 +849,7 @@ export default function HomeTab({ user }: HomeTabProps) {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 mt-4">
                 {displayPosts.map((post) => (
-                  <div key={post.id} onClick={() => openCookMode(post)} className="aspect-square relative cursor-pointer group outline-none [-webkit-tap-highlight-color:transparent] overflow-hidden">
+                  <div key={post.id} onClick={() => setFocusedPost(post)} className="aspect-square relative cursor-pointer group outline-none [-webkit-tap-highlight-color:transparent] overflow-hidden">
                     {post.imageUrl ? <img src={post.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> : <div className={`w-full h-full bg-gradient-to-br ${post.gradient} flex items-center justify-center`}><span className="text-3xl sm:text-5xl">{post.emoji}</span></div>}
                   </div>
                 ))}
@@ -843,7 +871,6 @@ export default function HomeTab({ user }: HomeTabProps) {
                               <div className="w-full h-full rounded-full bg-gradient-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-lg font-bold overflow-hidden">
                                 {chef.avatar_url ? <img src={chef.avatar_url} className="w-full h-full object-cover" /> : chef.full_name.charAt(0).toUpperCase()}
                               </div>
-                              {/* 🚀 BADGE INTEGRATION ON DP IN TOP CHEFS SEARCH */}
                               {chef.is_verified && (
                                   <div className="absolute bottom-0 right-0 z-20">
                                       <VerifiedBadge sizeClass="w-[16px] h-[16px]" noTooltip={true}/>
@@ -867,7 +894,7 @@ export default function HomeTab({ user }: HomeTabProps) {
                       <h4 className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-1">Top Recipes</h4>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
                         {displayPosts.map((post) => (
-                          <div key={post.id} onClick={() => openCookMode(post)} className="aspect-square relative cursor-pointer group outline-none [-webkit-tap-highlight-color:transparent] overflow-hidden">
+                          <div key={post.id} onClick={() => setFocusedPost(post)} className="aspect-square relative cursor-pointer group outline-none [-webkit-tap-highlight-color:transparent] overflow-hidden">
                             {post.imageUrl ? <img src={post.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> : <div className={`w-full h-full bg-gradient-to-br ${post.gradient} flex items-center justify-center`}><span className="text-3xl sm:text-5xl">{post.emoji}</span></div>}
                           </div>
                         ))}
@@ -936,93 +963,7 @@ export default function HomeTab({ user }: HomeTabProps) {
               <div className="text-center py-16 px-6 border-2 border-dashed border-slate-300 dark:border-white/10 rounded-[2.5rem] bg-white dark:bg-white/[0.01] mx-4"><p className="text-slate-500 dark:text-slate-400 font-medium text-sm">No recipes found!</p></div>
             ) : (
               <div className="flex flex-col gap-0 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-7 pb-4">
-                {displayPosts.map((post) => (
-                  <div key={post.id} className="flex flex-col w-full border-b-[8px] sm:border-b-0 border-slate-100 dark:border-[#121216] sm:bg-transparent">
-                    
-                    <div className="relative bg-white dark:bg-[#0b0b0e] border-y sm:border border-slate-200/80 dark:border-white/10 rounded-none sm:rounded-[2.5rem] overflow-hidden shadow-none sm:shadow-md dark:shadow-2xl transition-all sm:hover:-translate-y-1.5 sm:hover:shadow-[0_20px_50px_#0000001a] sm:dark:hover:border-white/20 group/card flex flex-col">
-                      
-                      {/* Author Header */}
-                      <div className="py-3 px-4 sm:p-5 flex justify-between items-center bg-transparent border-b border-slate-100 dark:border-white/5 z-10">
-                        <div onClick={() => openChefProfile(post.authorId || "mock", post.authorName)} className="flex items-center gap-3 cursor-pointer group outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                          <div className="relative shrink-0 w-9 h-9">
-                            <div className="w-full h-full rounded-full bg-gradient-to-tr from-orange-500 to-red-500 p-[2px] shadow">
-                              <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-xs font-black text-slate-900 dark:text-white uppercase transition-colors overflow-hidden">
-                                {post.authorAvatar ? <img src={post.authorAvatar} className="w-full h-full object-cover" /> : post.authorName.charAt(0).toUpperCase()}
-                              </div>
-                            </div>
-                            {/* 🚀 BADGE INTEGRATION IN FEED HEADER DP */}
-                            {post.authorIsVerified && (
-                                <div className="absolute bottom-0 right-0 z-20">
-                                    <VerifiedBadge sizeClass="w-[14px] h-[14px]" noTooltip={true}/>
-                                </div>
-                            )}
-                          </div>
-                          <div className="flex flex-col">
-                            <div className="text-sm text-slate-900 dark:text-white font-bold transition-colors leading-tight group-hover:underline flex items-center gap-1.5">
-                                {post.authorName}
-                            </div>
-                            <p className="text-[10px] text-slate-500 font-medium">Zestly Chef</p>
-                          </div>
-                        </div>
-                        <button className="text-slate-400 hover:text-slate-600 dark:hover:text-white outline-none [-webkit-tap-highlight-color:transparent]">
-                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm-7 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm14 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>
-                        </button>
-                      </div>
-
-                      <div onClick={() => openCookMode(post)} className={`w-full aspect-square sm:aspect-auto sm:h-72 relative flex items-center justify-center cursor-pointer sm:overflow-hidden outline-none focus:outline-none [-webkit-tap-highlight-color:transparent] ${!post.imageUrl ? `bg-gradient-to-br ${post.gradient}` : 'bg-slate-100 dark:bg-black'}`}>
-                        {post.imageUrl ? <img src={post.imageUrl} className="w-full h-full object-cover sm:group-hover/card:scale-105 transition-transform duration-700" /> : <span className="text-8xl drop-shadow-2xl sm:group-hover/card:scale-110 transition-transform duration-500">{post.emoji}</span>}
-                        {/* 🚀 VIEWS BADGE OVERLAY */}
-                        <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                            {formatNum(post.viewsCount)}
-                        </div>
-                      </div>
-
-                      <div className="pt-3 pb-5 px-4 sm:p-5 flex-1 flex flex-col justify-between bg-transparent transition-colors z-10">
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-4">
-                              <button onClick={() => toggleLike(post.id)} className="group transition-transform active:scale-125 cursor-pointer outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                                <svg className={`w-7 h-7 transition-all duration-300 outline-none focus:outline-none ${post.is_liked ? 'fill-red-500 text-red-500 scale-110' : 'text-slate-900 dark:text-white group-hover:text-red-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
-                              </button>
-                              
-                              <button onClick={() => openComments(post)} className="group flex items-center gap-1.5 cursor-pointer transition-colors active:scale-95 outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                                <svg className="w-7 h-7 text-slate-900 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                                {post.commentsCount > 0 && <span className="text-[13px] font-bold text-slate-700 dark:text-slate-300">{post.commentsCount}</span>}
-                              </button>
-
-                              <button onClick={() => handleShare(post.name)} className="cursor-pointer active:scale-110 transition-transform outline-none focus:outline-none [-webkit-tap-highlight-color:transparent]">
-                                <svg className="w-7 h-7 text-slate-900 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
-                              </button>
-                            </div>
-                            
-                            <button onClick={() => toggleSave(post.id)} className={`outline-none active:scale-90 transition-all duration-300 ${savedRecipeIds.includes(post.id) ? 'text-orange-500' : 'text-slate-900 dark:text-white'}`}>
-                              <svg className="w-7 h-7" fill={savedRecipeIds.includes(post.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
-                            </button>
-                          </div>
-                          
-                          <div className="flex items-center gap-3 mb-1.5">
-                              <p className="font-bold text-sm text-slate-900 dark:text-white">{formatNum(post.likesCount)} likes</p>
-                              <span className="text-slate-300 dark:text-slate-700">•</span>
-                              <p className="font-bold text-sm text-slate-500 flex items-center gap-1"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg> {formatNum(post.viewsCount)}</p>
-                          </div>
-                          <div className="text-sm text-slate-900 dark:text-white leading-relaxed line-clamp-2">
-                              <strong className="mr-1.5 font-bold cursor-pointer hover:underline inline-flex items-center gap-1" onClick={() => openChefProfile(post.authorId || "mock", post.authorName)}>
-                                  {post.authorName}
-                              </strong> 
-                              {post.name} - The ultimate {post.type} treat! 🥘✨
-                          </div>
-                          
-                          {post.commentsCount > 0 && (
-                            <p onClick={() => openComments(post)} className="text-[13px] text-slate-500 mt-1.5 cursor-pointer font-medium hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
-                              View all {post.commentsCount} comments
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                {displayPosts.map((post) => renderFeedCard(post))}
               </div>
             )}
             
@@ -1037,99 +978,145 @@ export default function HomeTab({ user }: HomeTabProps) {
         </>
       )}
 
-      {/* MODAL: INSTAGRAM STYLE CHEF PROFILE */}
+      {/* 🚀 MODAL: FOCUSED POST DETAIL (z-[100000]) */}
+      {mounted && focusedPost && createPortal(
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200 select-none" onClick={() => setFocusedPost(null)}>
+           <div className="bg-white dark:bg-[#0b0b0e] w-full max-w-md rounded-[2.5rem] overflow-hidden relative shadow-2xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+             {/* Header */}
+             <div className="flex justify-between items-center p-4 border-b border-slate-100 dark:border-white/10 bg-white dark:bg-[#0b0b0e] z-10 shrink-0">
+               <h3 className="font-bold text-slate-900 dark:text-white ml-2">Recipe Details</h3>
+               <button onClick={() => setFocusedPost(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-white cursor-pointer active:scale-95 transition-all">✕</button>
+             </div>
+             {/* Feed Card Render */}
+             <div className="overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+               {renderFeedCard(focusedPost, true)}
+             </div>
+           </div>
+        </div>, document.body
+      )}
+
+      {/* MODAL: INSTAGRAM STYLE CHEF PROFILE WITH SKELETON (z-[90000]) */}
       {mounted && viewingChef && createPortal(
-        <div className="fixed inset-0 z-[99999] bg-slate-50 dark:bg-[#07070a] flex flex-col animate-in slide-in-from-bottom-full duration-500">
+        <div className="fixed inset-0 z-[90000] bg-slate-50 dark:bg-[#07070a] flex flex-col animate-in slide-in-from-bottom-full duration-500 select-none">
           <div className="w-full max-w-4xl mx-auto flex flex-col h-full relative bg-white dark:bg-[#07070a] shadow-2xl">
             
             <div className="shrink-0 flex justify-between items-center px-6 py-4 border-b border-slate-100 dark:border-white/5 sticky top-0 bg-white dark:bg-[#07070a] z-50">
               <button onClick={() => setViewingChef(null)} className="cursor-pointer text-slate-600 dark:text-white w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-white/10 transition-colors outline-none [-webkit-tap-highlight-color:transparent]">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
               </button>
-              <h3 className="text-lg font-black text-slate-900 dark:text-white">{viewingChef.username || viewingChef.full_name.toLowerCase().replace(" ", "_")}</h3>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                 {viewingChef.isLoading ? "Loading..." : (viewingChef.username || viewingChef.full_name.toLowerCase().replace(" ", "_"))}
+              </h3>
               <div className="w-10 h-10"></div> 
             </div>
             
             <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              <div className="px-6 py-8 flex flex-col sm:flex-row items-start sm:items-center gap-6 sm:gap-10">
-                <div className="relative w-24 h-24 sm:w-32 sm:h-32 shrink-0">
-                  <div className="w-full h-full rounded-full bg-gradient-to-tr from-orange-500 to-red-500 p-1">
-                    <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-4xl sm:text-5xl font-black text-slate-900 dark:text-white uppercase overflow-hidden">
-                      {viewingChef.avatar_url ? <img src={viewingChef.avatar_url} className="w-full h-full object-cover" /> : viewingChef.full_name.charAt(0).toUpperCase()}
-                    </div>
-                  </div>
-                  {/* 🚀 BADGE INTEGRATION IN PROFILE MODAL ON DP */}
-                  {viewingChef.is_verified && (
-                      <div className="absolute bottom-0 right-0 sm:bottom-1 sm:right-1 z-20">
-                          <VerifiedBadge sizeClass="w-[24px] h-[24px] sm:w-[32px] sm:h-[32px]" noTooltip={true} />
+              {viewingChef.isLoading ? (
+                <>
+                  <div className="px-6 py-8 flex flex-col sm:flex-row items-start sm:items-center gap-6 sm:gap-10 animate-pulse">
+                    <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-slate-200 dark:bg-white/5 shrink-0"></div>
+                    <div className="flex-1 w-full space-y-5">
+                      <div className="flex justify-around sm:justify-start sm:gap-12">
+                        <div className="w-12 h-10 bg-slate-200 dark:bg-white/5 rounded-lg"></div>
+                        <div className="w-12 h-10 bg-slate-200 dark:bg-white/5 rounded-lg"></div>
+                        <div className="w-12 h-10 bg-slate-200 dark:bg-white/5 rounded-lg"></div>
                       </div>
-                  )}
-                </div>
-                
-                <div className="flex-1 w-full">
-                  <div className="flex justify-around sm:justify-start sm:gap-12 mb-5 text-center sm:text-left">
-                    <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{formatNum(viewingChef.postsCount)}</span><span className="text-xs text-slate-500 font-bold">Posts</span></div>
-                    <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{formatNum(viewingChef.followersCount)}</span><span className="text-xs text-slate-500 font-bold">Followers</span></div>
-                    <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{formatNum(viewingChef.followingCount)}</span><span className="text-xs text-slate-500 font-bold">Following</span></div>
-                  </div>
-
-                  <div className="mb-5">
-                    <div className="font-extrabold text-slate-900 dark:text-white text-base flex items-center gap-2 justify-center sm:justify-start">
-                        {viewingChef.full_name}
+                      <div className="w-1/2 h-5 bg-slate-200 dark:bg-white/5 rounded-lg mt-2"></div>
+                      <div className="w-full h-10 bg-slate-200 dark:bg-white/5 rounded-xl"></div>
                     </div>
-                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium whitespace-pre-wrap leading-relaxed mt-1">{viewingChef.bio}</p>
                   </div>
-
-                  {viewingChef.id !== user?.id && (
-                    <button 
-                      onClick={handleFollowToggle} 
-                      disabled={isFollowLoading}
-                      className={`cursor-pointer w-full sm:w-auto px-10 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] ${isFollowingChef ? 'bg-slate-200 dark:bg-white/10 text-slate-900 dark:text-white hover:bg-slate-300 dark:hover:bg-white/20' : 'bg-orange-500 text-white hover:bg-orange-600 shadow-[0_4px_15px_#f973164d]'}`}
-                    >
-                      {isFollowLoading ? (
-                        <svg className="animate-spin h-5 w-5 text-current" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                      ) : isFollowingChef ? 'Following' : 'Follow'}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex justify-center border-t border-slate-200 dark:border-white/5">
-                <div className="w-1/2 border-t-2 border-slate-900 dark:border-white py-3 flex justify-center text-slate-900 dark:text-white">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-0.5 sm:gap-1 pb-10">
-                {viewingChefRecipes.length === 0 ? (
-                  <div className="col-span-3 text-center py-20 text-slate-500 font-medium text-sm">No recipes yet.</div>
-                ) : (
-                  viewingChefRecipes.map((post) => (
-                    <div key={post.id} onClick={() => {setViewingChef(null); openCookMode(post);}} className="aspect-square relative cursor-pointer group outline-none [-webkit-tap-highlight-color:transparent] overflow-hidden">
-                      {post.imageUrl ? (
-                        <img src={post.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                      ) : (
-                        <div className={`w-full h-full bg-gradient-to-br ${post.gradient} flex items-center justify-center`}><span className="text-3xl sm:text-5xl">{post.emoji}</span></div>
+                  <div className="flex justify-center border-t border-slate-200 dark:border-white/5">
+                    <div className="w-1/2 border-t-2 border-slate-300 dark:border-white/20 py-3 flex justify-center">
+                      <svg className="w-6 h-6 text-slate-300 dark:text-white/20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-0.5 sm:gap-1 pb-10">
+                     {[...Array(6)].map((_, i) => (
+                       <div key={i} className="aspect-square bg-slate-200 dark:bg-white/5 animate-pulse"></div>
+                     ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="px-6 py-8 flex flex-col sm:flex-row items-start sm:items-center gap-6 sm:gap-10">
+                    <div className="relative w-24 h-24 sm:w-32 sm:h-32 shrink-0">
+                      <div className="w-full h-full rounded-full bg-gradient-to-tr from-orange-500 to-red-500 p-1">
+                        <div className="w-full h-full bg-white dark:bg-[#1c1c1e] rounded-full flex items-center justify-center text-4xl sm:text-5xl font-black text-slate-900 dark:text-white uppercase overflow-hidden">
+                          {viewingChef.avatar_url ? <img src={viewingChef.avatar_url} className="w-full h-full object-cover" /> : viewingChef.full_name.charAt(0).toUpperCase()}
+                        </div>
+                      </div>
+                      {viewingChef.is_verified && (
+                          <div className="absolute bottom-0 right-0 sm:bottom-1 sm:right-1 z-20">
+                              <VerifiedBadge sizeClass="w-[24px] h-[24px] sm:w-[32px] sm:h-[32px]" noTooltip={true} />
+                          </div>
                       )}
-                      <div className="absolute top-2 right-2 bg-black/50 text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                        {formatNum(post.viewsCount)}
-                      </div>
                     </div>
-                  ))
-                )}
-              </div>
+                    
+                    <div className="flex-1 w-full">
+                      <div className="flex justify-around sm:justify-start sm:gap-12 mb-5 text-center sm:text-left">
+                        <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{formatNum(viewingChef.postsCount)}</span><span className="text-xs text-slate-500 font-bold">Posts</span></div>
+                        <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{formatNum(viewingChef.followersCount)}</span><span className="text-xs text-slate-500 font-bold">Followers</span></div>
+                        <div className="flex flex-col"><span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{formatNum(viewingChef.followingCount)}</span><span className="text-xs text-slate-500 font-bold">Following</span></div>
+                      </div>
 
+                      <div className="mb-5">
+                        <div className="font-extrabold text-slate-900 dark:text-white text-base flex items-center gap-2 justify-center sm:justify-start">
+                            {viewingChef.full_name}
+                        </div>
+                        <p className="text-sm text-slate-600 dark:text-slate-300 font-medium whitespace-pre-wrap leading-relaxed mt-1">{viewingChef.bio}</p>
+                      </div>
+
+                      {viewingChef.id !== user?.id && (
+                        <button 
+                          onClick={handleFollowToggle} 
+                          disabled={isFollowLoading}
+                          className={`cursor-pointer w-full sm:w-auto px-10 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center transition-all active:scale-95 outline-none [-webkit-tap-highlight-color:transparent] ${isFollowingChef ? 'bg-slate-200 dark:bg-white/10 text-slate-900 dark:text-white hover:bg-slate-300 dark:hover:bg-white/20' : 'bg-orange-500 text-white hover:bg-orange-600 shadow-[0_4px_15px_#f973164d]'}`}
+                        >
+                          {isFollowLoading ? (
+                            <svg className="animate-spin h-5 w-5 text-current" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                          ) : isFollowingChef ? 'Following' : 'Follow'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-center border-t border-slate-200 dark:border-white/5">
+                    <div className="w-1/2 border-t-2 border-slate-900 dark:border-white py-3 flex justify-center text-slate-900 dark:text-white">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-0.5 sm:gap-1 pb-10">
+                    {viewingChefRecipes.length === 0 ? (
+                      <div className="col-span-3 text-center py-20 text-slate-500 font-medium text-sm">No recipes yet.</div>
+                    ) : (
+                      viewingChefRecipes.map((post) => (
+                        <div key={post.id} onClick={() => { setFocusedPost(post); }} className="aspect-square relative cursor-pointer group outline-none [-webkit-tap-highlight-color:transparent] overflow-hidden">
+                          {post.imageUrl ? (
+                            <img src={post.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                          ) : (
+                            <div className={`w-full h-full bg-gradient-to-br ${post.gradient} flex items-center justify-center`}><span className="text-3xl sm:text-5xl">{post.emoji}</span></div>
+                          )}
+                          <div className="absolute top-2 right-2 bg-black/50 text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                            {formatNum(post.viewsCount)}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>,
         document.body
       )}
 
-      {/* 🚀🔥 NEW INSTAGRAM STYLE COMMENTS MODAL */}
+      {/* 🚀🔥 NEW INSTAGRAM STYLE COMMENTS MODAL (TOP Z-INDEX z-[110000]) */}
       {mounted && activeCommentsPost && createPortal(
-        <div className="fixed inset-0 z-[99999] flex flex-col justify-end bg-black/60 dark:bg-black/80 backdrop-blur-sm sm:items-center sm:justify-center p-0 sm:p-4 transition-all">
-          <div className="bg-white dark:bg-[#1c1c1e] border border-slate-200 dark:border-white/10 w-full sm:w-[500px] h-[85vh] sm:h-[650px] rounded-t-[2.5rem] sm:rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
+        <div className="fixed inset-0 z-[110000] flex flex-col justify-end bg-black/60 dark:bg-black/80 backdrop-blur-sm sm:items-center sm:justify-center p-0 sm:p-4 transition-all select-none">
+          <div className="bg-white dark:bg-[#1c1c1e] border border-slate-200 dark:border-white/10 w-full sm:w-[500px] h-[85vh] sm:h-[650px] rounded-t-[2.5rem] sm:rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="shrink-0 flex justify-between items-center px-6 py-4 border-b border-slate-100 dark:border-white/10 z-10">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">Comments</h3>
               <button onClick={() => setActiveCommentsPost(null)} className="cursor-pointer text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 w-9 h-9 rounded-full flex items-center justify-center transition-colors">✕</button>
@@ -1158,7 +1145,7 @@ export default function HomeTab({ user }: HomeTabProps) {
                              {cmt.author} 
                              <span className="text-[10px] text-slate-400 font-normal ml-2">{timeAgo(cmt.created_at)}</span>
                            </p>
-                           <p className="text-[13px] text-slate-700 dark:text-slate-300 break-words leading-relaxed">{cmt.text}</p>
+                           <p className="text-[13px] text-slate-700 dark:text-slate-300 break-words leading-relaxed select-text">{cmt.text}</p>
                          </div>
                          
                          <button onClick={() => setReplyingTo({ commentId: cmt.id, author: cmt.author })} className="text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 mt-2 ml-2 transition-colors outline-none cursor-pointer">
@@ -1178,7 +1165,7 @@ export default function HomeTab({ user }: HomeTabProps) {
                                        {reply.author} 
                                        <span className="text-[9px] text-slate-400 font-normal ml-1.5">{timeAgo(reply.created_at)}</span>
                                      </p>
-                                     <p className="text-[13px] text-slate-700 dark:text-slate-300 break-words leading-relaxed">
+                                     <p className="text-[13px] text-slate-700 dark:text-slate-300 break-words leading-relaxed select-text">
                                        {reply.text.startsWith('@') ? (
                                          <>
                                            <span className="text-blue-500 font-medium mr-1">{reply.text.split(' ')[0]}</span>
@@ -1218,7 +1205,7 @@ export default function HomeTab({ user }: HomeTabProps) {
                  value={commentInput} 
                  onChange={(e) => setCommentInput(e.target.value)} 
                  onKeyDown={(e) => e.key === 'Enter' && submitComment()}
-                 className="flex-1 bg-slate-100 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-full px-5 py-3.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-orange-400" 
+                 className="flex-1 bg-slate-100 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-full px-5 py-3.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-orange-400 select-text" 
                />
                <button 
                  onClick={submitComment} 
@@ -1238,9 +1225,9 @@ export default function HomeTab({ user }: HomeTabProps) {
         </div>, document.body
       )}
 
-      {/* 🚀 FULLY RESTORED COOK MODE UX */}
+      {/* 🚀 FULLY RESTORED COOK MODE UX (z-[110000]) */}
       {mounted && cookModePost && createPortal(
-        <div className="fixed inset-0 z-[99999] bg-white dark:bg-[#07070a] flex flex-col animate-in slide-in-from-bottom-full duration-500">
+        <div className="fixed inset-0 z-[110000] bg-white dark:bg-[#07070a] flex flex-col animate-in slide-in-from-bottom-full duration-500 select-none">
           <div className="w-full max-w-4xl mx-auto flex flex-col h-full relative">
             
             <div className="shrink-0 pt-10 pb-4 px-6 sm:px-10 bg-white dark:bg-[#07070a] border-b border-slate-100 dark:border-white/5 relative z-20">
@@ -1307,8 +1294,9 @@ export default function HomeTab({ user }: HomeTabProps) {
         document.body
       )}
 
+      {/* LOGIN REQUIRED ALERT (z-[120000]) */}
       {mounted && alertModal.isOpen && createPortal(
-        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200" onClick={() => setAlertModal({ isOpen: false, message: "" })}>
+        <div className="fixed inset-0 z-[120000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200 select-none" onClick={() => setAlertModal({ isOpen: false, message: "" })}>
           <div className="bg-white dark:bg-[#1c1c1e] w-full max-w-sm rounded-[2rem] p-6 shadow-2xl border border-slate-200 dark:border-white/10 text-center" onClick={e => e.stopPropagation()}>
             <div className="w-16 h-16 mx-auto bg-orange-100 dark:bg-orange-500/20 text-orange-500 rounded-full flex items-center justify-center text-2xl mb-4">👨‍🍳</div>
             <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">Login Required</h3>
@@ -1321,8 +1309,9 @@ export default function HomeTab({ user }: HomeTabProps) {
         </div>, document.body
       )}
 
+      {/* TOASTS (z-[120000]) */}
       {mounted && toast.isOpen && createPortal(
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100000] pointer-events-none">
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[120000] pointer-events-none select-none">
           <div className="bg-slate-900 dark:bg-[#1c1c1e] text-white px-6 py-3.5 rounded-full shadow-lg text-sm font-bold border border-slate-700 dark:border-white/10">{toast.message}</div>
         </div>, document.body
       )}
