@@ -286,6 +286,7 @@ export default function HomeTab({ user }: HomeTabProps) {
       let displayLikes = realLikes;
       let displayViews = realViews;
 
+      // 🛑 Engine Call
       if (isFakeOn) {
           const engineData = calculateFakeEngagement(item.id, item.created_at, isFakeOn);
           displayLikes = realLikes + engineData.likes;
@@ -334,6 +335,7 @@ export default function HomeTab({ user }: HomeTabProps) {
 
     const { data: profilesData } = await supabase.from("profiles").select("*").order("bonus_followers", { ascending: false }).limit(10);
     
+    // 🛑 Engine Call for Followers
     if (profilesData && profilesData.length > 0) {
       const formattedChefs = await Promise.all(profilesData.map(async p => {
           const { count: rc } = await supabase.from("recipes").select("*", { count: "exact", head: true }).eq("author_id", p.id);
@@ -798,6 +800,7 @@ export default function HomeTab({ user }: HomeTabProps) {
                       )}
                     </div>
                   </div>
+                  {/* 🚀 BADGE INTEGRATION IN TRENDING LIST ON DP */}
                   {chef.is_verified && (
                       <div className="absolute bottom-0 right-0 z-20">
                           <VerifiedBadge sizeClass="w-[18px] h-[18px] sm:w-[22px] sm:h-[22px]" noTooltip={true} />
@@ -841,6 +844,7 @@ export default function HomeTab({ user }: HomeTabProps) {
                       <div className="w-full h-full rounded-full bg-gradient-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-xl font-bold overflow-hidden">
                         {chef.avatar_url ? <img src={chef.avatar_url} className="w-full h-full object-cover" /> : chef.full_name.charAt(0).toUpperCase()}
                       </div>
+                      {/* 🚀 BADGE INTEGRATION ON DP IN SEARCH */}
                       {chef.is_verified && (
                           <div className="absolute bottom-0 right-0 z-20">
                               <VerifiedBadge sizeClass="w-[18px] h-[18px]" noTooltip={true}/>
@@ -885,6 +889,7 @@ export default function HomeTab({ user }: HomeTabProps) {
                               <div className="w-full h-full rounded-full bg-gradient-to-tr from-orange-500 to-red-500 flex items-center justify-center text-white text-lg font-bold overflow-hidden">
                                 {chef.avatar_url ? <img src={chef.avatar_url} className="w-full h-full object-cover" /> : chef.full_name.charAt(0).toUpperCase()}
                               </div>
+                              {/* 🚀 BADGE INTEGRATION ON DP IN TOP CHEFS SEARCH */}
                               {chef.is_verified && (
                                   <div className="absolute bottom-0 right-0 z-20">
                                       <VerifiedBadge sizeClass="w-[16px] h-[16px]" noTooltip={true}/>
@@ -1246,9 +1251,9 @@ export default function HomeTab({ user }: HomeTabProps) {
             
             <div className="shrink-0 pt-10 pb-4 px-6 sm:px-10 bg-white dark:bg-[#07070a] border-b border-slate-100 dark:border-white/5 relative z-20">
               <button onClick={() => setCookModePost(null)} className="absolute top-8 right-6 sm:right-10 cursor-pointer bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-white w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-200 dark:hover:bg-white/20 transition-colors outline-none [-webkit-tap-highlight-color:transparent]">✕</button>
-              <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-6 pr-14 leading-tight">{cookModePost.name}</h3>
+              <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-6 pr-14 leading-tight pointer-events-none">{cookModePost.name}</h3>
               
-              <div className="flex gap-1.5 mb-2">
+              <div className="flex gap-1.5 mb-2 pointer-events-none">
                 <div className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${currentStep === -1 ? 'bg-orange-500' : 'bg-slate-200 dark:bg-white/10'}`}></div>
                 {cookModePost.steps.map((_, idx) => (
                   <div key={idx} className={`h-1.5 rounded-full flex-1 transition-all duration-500 ${currentStep >= idx ? 'bg-orange-500' : 'bg-slate-200 dark:bg-white/10'}`}></div>
@@ -1259,22 +1264,22 @@ export default function HomeTab({ user }: HomeTabProps) {
             <div className="flex-1 overflow-y-auto px-6 sm:px-10 py-10 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               {currentStep === -1 && (
                 <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-10">
-                  <div className="bg-linear-to-r from-orange-50 to-red-50 dark:from-orange-500/10 dark:to-red-500/5 border border-orange-200 dark:border-orange-500/20 p-6 rounded-[2rem] flex justify-between items-center">
+                  <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-500/10 dark:to-red-500/5 border border-orange-200 dark:border-orange-500/20 p-6 rounded-[2rem] flex justify-between items-center">
                     <div>
-                      <span className="text-orange-600 dark:text-orange-400 font-extrabold text-base block">Serving Size</span>
+                      <span className="text-orange-600 dark:text-orange-400 font-extrabold text-base block pointer-events-none">Serving Size</span>
                     </div>
                     <div className="flex items-center gap-5 bg-white dark:bg-black/40 p-2 rounded-2xl border border-orange-100 dark:border-white/5 shadow-sm dark:shadow-none">
                       <button onClick={() => setPortions(Math.max(1, portions - 1))} className="cursor-pointer w-12 h-12 rounded-xl bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-900 dark:text-white font-black text-xl active:scale-95 transition-transform outline-none [-webkit-tap-highlight-color:transparent]">-</button>
-                      <span className="font-black text-slate-900 dark:text-white w-8 text-center text-xl">{portions}</span>
+                      <span className="font-black text-slate-900 dark:text-white w-8 text-center text-xl pointer-events-none">{portions}</span>
                       <button onClick={() => setPortions(portions + 1)} className="cursor-pointer w-12 h-12 rounded-xl bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-900 dark:text-white font-black text-xl active:scale-95 transition-transform outline-none [-webkit-tap-highlight-color:transparent]">+</button>
                     </div>
                   </div>
 
                   <div>
-                    <h4 className="text-slate-900 dark:text-white font-black text-xl mb-5">Ingredients</h4>
+                    <h4 className="text-slate-900 dark:text-white font-black text-xl mb-5 pointer-events-none">Ingredients</h4>
                     <ul className="grid grid-cols-1 gap-4">
                       {cookModePost.ingredients.map((ing, i) => (
-                        <li key={i} className="flex items-center gap-5 bg-slate-50 dark:bg-white/[0.02] p-5 rounded-2xl border border-slate-100 dark:border-white/5">
+                        <li key={i} className="flex items-center gap-5 bg-slate-50 dark:bg-white/[0.02] p-5 rounded-2xl border border-slate-100 dark:border-white/5 pointer-events-none">
                           <span className="text-slate-700 dark:text-white font-bold text-lg">{ing} <span className="text-orange-500 dark:text-orange-400 ml-2">(x{portions})</span></span>
                         </li>
                       ))}
@@ -1285,13 +1290,13 @@ export default function HomeTab({ user }: HomeTabProps) {
 
               {currentStep >= 0 && (
                 <div className="flex flex-col items-center justify-center h-full text-center space-y-10 animate-in zoom-in-95 duration-500">
-                  <div className="w-32 h-32 rounded-full bg-linear-to-br from-orange-400 to-red-500 flex items-center justify-center text-5xl font-black text-white shadow-[0_8px_30px_#f9731666]">{currentStep + 1}</div>
-                  <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-800 dark:text-white px-4 leading-relaxed">{cookModePost.steps[currentStep]}</h2>
+                  <div className="w-32 h-32 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-5xl font-black text-white shadow-[0_8px_30px_#f9731666] pointer-events-none">{currentStep + 1}</div>
+                  <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-800 dark:text-white px-4 leading-relaxed pointer-events-none">{cookModePost.steps[currentStep]}</h2>
                 </div>
               )}
             </div>
 
-            <div className="shrink-0 p-6 sm:px-10 pb-8 bg-linear-to-t from-white dark:from-[#07070a] to-transparent relative z-20">
+            <div className="shrink-0 p-6 sm:px-10 pb-8 bg-gradient-to-t from-white dark:from-[#07070a] to-transparent relative z-20">
               {currentStep === -1 ? (
                 <button onClick={() => setCurrentStep(0)} className="cursor-pointer w-full bg-slate-900 dark:bg-white text-white dark:text-black font-black text-xl py-5 rounded-2xl hover:scale-[1.02] active:scale-[0.98] transition-all outline-none [-webkit-tap-highlight-color:transparent] shadow-[0_8px_30px_#00000033] dark:shadow-[0_8px_30px_#ffffff33]">Let's Start Cooking</button>
               ) : (
@@ -1331,4 +1336,4 @@ export default function HomeTab({ user }: HomeTabProps) {
       )}
     </div>
   );
-} 
+}
