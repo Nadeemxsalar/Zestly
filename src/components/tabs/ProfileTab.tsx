@@ -194,11 +194,20 @@ export default function ProfileTab({ user }: { user: any }) {
       let displayLikes = r.likes_count || 0;
       let displayViews = r.views_count || Math.floor(Math.random() * 20); 
       
+      // 🚀 FIXED: Passed authorId and recipeId correctly for deterministic results
       if (isFakeOn) {
-          const engineData = calculateFakeEngagement(r.id, r.created_at, isFakeOn);
+          const authorIdToPass = r.author_id || user.id || "unknown";
+          const engineData = calculateFakeEngagement(authorIdToPass, r.id, r.created_at, isFakeOn);
           displayLikes += engineData.likes;
           displayViews += engineData.views;
       }
+
+      // 🛑 STRICT FRONTEND CAP: Ensure likes NEVER equal or exceed views dynamically
+      const maxLikes = Math.floor(displayViews * 0.40);
+      if (displayLikes >= displayViews || displayLikes > maxLikes) {
+          displayLikes = Math.floor(displayViews * (0.05 + Math.random() * 0.10));
+      }
+
       return {
           id: r.id, name: r.name, type: r.type || "Veg", emoji: r.emoji || "🍲", gradient: r.gradient || "from-orange-500 to-red-600",
           is_liked: r.is_liked || false, imageUrl: r.image_url, authorName: r.author_name || "Chef", authorId: r.author_id,

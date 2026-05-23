@@ -9,23 +9,23 @@
 // │  REAL ALGORITHM PIPELINE                                             │
 // │                                                                      │
 // │  POST                                                                │
-// │   ↓ Stage 0: Indexing   (0–90 min)   zero reach, processing         │
-// │   ↓ Stage 1: SEED       (90m–3h)     15–35% engaged followers       │
-// │   │          ER < 4%? ──────────────────────────────→ FLOP          │
-// │   ↓ Stage 2: HASHTAG    (3–8h)       hashtag + interest graph       │
-// │   │          ER < 6%? ──────────────────────────────→ AVERAGE       │
-// │   ↓ Stage 3: EXPLORE    (8–24h)      Explore / For-You feed         │
-// │   │          ER < 8%? ──────────────────────────────→ GOOD          │
-// │   ↓ Stage 4: VIRAL WAVE (24–72h)     full platform distribution     │
-// │   ↓ Stage 5: LONG TAIL  (72h+)       gradual decay                  │
+// │   ↓ Stage 0: Indexing   (0–90 min)   zero reach, processing          │
+// │   ↓ Stage 1: SEED       (90m–3h)     15–35% engaged followers        │
+// │   │          ER < 4%? ──────────────────────────────→ FLOP           │
+// │   ↓ Stage 2: HASHTAG    (3–8h)       hashtag + interest graph        │
+// │   │          ER < 6%? ──────────────────────────────→ AVERAGE        │
+// │   ↓ Stage 3: EXPLORE    (8–24h)      Explore / For-You feed          │
+// │   │          ER < 8%? ──────────────────────────────→ GOOD           │
+// │   ↓ Stage 4: VIRAL WAVE (24–72h)     full platform distribution      │
+// │   ↓ Stage 5: LONG TAIL  (72h+)       gradual decay                   │
 // │                                                                      │
-// │   ✦ RE-SURFACE: 5% chance algo re-pushes old posts (real mechanic)  │
-// │   ✦ SAVES are weighted 3–4× more than likes (Instagram truth)       │
-// │   ✦ SHARES are the strongest viral signal                           │
-// │   ✦ WATCH TIME simulated for reels (completion % → algo push)       │
-// │   ✦ ACCOUNT AUTHORITY: consistent posters get better initial push   │
-// │   ✦ GHOST FOLLOWERS: 20–45% of food account followers are ghosts    │
-// │   ✦ SEASONAL FOOD BOOSTS: Diwali, New Year, Eid, Monsoon season     │
+// │   ✦ RE-SURFACE: 5% chance algo re-pushes old posts (real mechanic)   │
+// │   ✦ SAVES are weighted 3–4× more than likes (Instagram truth)        │
+// │   ✦ SHARES are the strongest viral signal                            │
+// │   ✦ WATCH TIME simulated for reels (completion % → algo push)        │
+// │   ✦ ACCOUNT AUTHORITY: consistent posters get better initial push    │
+// │   ✦ GHOST FOLLOWERS: 20–45% of food account followers are ghosts     │
+// │   ✦ SEASONAL FOOD BOOSTS: Diwali, New Year, Eid, Monsoon season      │
 // └──────────────────────────────────────────────────────────────────────┘
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -202,17 +202,6 @@ const getDayOfWeekMultiplier = (fp: Fingerprint): number => {
 // ── Stage-Based Distribution Model ───────────────────────────────────────
 // THIS is the core innovation. Each post moves through stages.
 // The destiny determines which gates it passes and how far it goes.
-//
-// Stage audience sizes (as multiplier of "seed audience"):
-//   Seed:    followers × seedRatio  (15–35%)
-//   Hashtag: seed × 2.5–5×
-//   Explore: hashtag × 4–10×
-//   Viral:   explore × 6–20×
-//
-// ER gates:
-//   Seed → Hashtag:  need ER > 4%   (only average/good/viral pass)
-//   Hashtag → Explore: need ER > 6% (only good/viral pass)
-//   Explore → Viral: need ER > 8%   (only viral passes)
 
 type DistributionStage = 'indexing' | 'seed' | 'hashtag' | 'explore' | 'viral_wave' | 'long_tail';
 
@@ -239,18 +228,15 @@ const getStageState = (
     }
 
     // ── Seed audience size ─────────────────────────────────────────────────
-    // Algorithm shows post to most-engaged followers first (not ALL followers).
-    // Authority score improves this ratio.
     const seedRatio    = 0.15 + fp.authorityScore * 0.20; // 15–35%
     const seedAudience = Math.floor(followers * seedRatio);
 
     // ── Hashtag/interest strategy multiplier ──────────────────────────────
     const hashtagMult: Record<HashtagStrat, number> = {
-        none: 1.0, niche: 2.8, mixed: 4.2, broad: 3.5, // broad is noisy, niche is targeted
+        none: 1.0, niche: 2.8, mixed: 4.2, broad: 3.5, 
     };
 
     // ── Stage timings (hours) ──────────────────────────────────────────────
-    // Different destinies have different pacing
     const timings: Record<PostDestiny, {
         seedEnd: number; hashEnd: number; expEnd: number; viralEnd: number;
     }> = {
@@ -262,13 +248,10 @@ const getStageState = (
     const T = timings[destiny];
 
     // ── Re-surface mechanic ────────────────────────────────────────────────
-    // ~5% of posts get re-pushed by algo after 7–30 days.
-    // Only average/good/viral can resurface. Determined by postHash.
     const canResurface    = destiny !== 'flop' && (postHash % 20) === 0; // 5%
     const resurfaceAt     = canResurface ? (168 + (postHash % 576)) : Infinity; // 7–31 days
     const resurfaced      = canResurface && ageHours >= resurfaceAt;
 
-    // If resurfaced, treat it like a fresh good post
     if (resurfaced) {
         const rAge = ageHours - resurfaceAt;
         const rPool = seedAudience * hashtagMult[fp.hashtagStrat] * 3;
@@ -287,20 +270,12 @@ const getStageState = (
     if (destiny === 'flop') {
         if (ageHours < T.seedEnd) {
             return {
-                stage: 'seed',
-                audiencePool: seedAudience,
-                stageProgress: clamp((ageHours - 1.5) / (T.seedEnd - 1.5), 0, 1),
+                stage: 'seed', audiencePool: seedAudience, stageProgress: clamp((ageHours - 1.5) / (T.seedEnd - 1.5), 0, 1),
                 erAtGate: 0, resurfaced: false,
             };
         }
-        // Dies — enters slow decay, very small long tail
         const decayPool = Math.floor(seedAudience * 1.1);
-        return {
-            stage: 'long_tail',
-            audiencePool: decayPool,
-            stageProgress: clamp((ageHours - T.seedEnd) / 120, 0, 1),
-            erAtGate: 0.028, resurfaced: false,
-        };
+        return { stage: 'long_tail', audiencePool: decayPool, stageProgress: clamp((ageHours - T.seedEnd) / 120, 0, 1), erAtGate: 0.028, resurfaced: false };
     }
 
     // AVERAGE: passes seed + hashtag gate, dies at explore gate
@@ -313,7 +288,6 @@ const getStageState = (
         if (ageHours < T.hashEnd) {
             return { stage: 'hashtag', audiencePool: hashAudience, stageProgress: clamp((ageHours - T.seedEnd) / (T.hashEnd - T.seedEnd), 0, 1), erAtGate: 0.052, resurfaced: false };
         }
-        // Plateaus — very small explore trickle
         const plateauPool = Math.floor(hashAudience * 1.3);
         return { stage: 'long_tail', audiencePool: plateauPool, stageProgress: clamp((ageHours - T.hashEnd) / 200, 0, 1), erAtGate: 0.051, resurfaced: false };
     }
@@ -332,7 +306,6 @@ const getStageState = (
         if (ageHours < T.expEnd) {
             return { stage: 'explore', audiencePool: exploreAudience, stageProgress: clamp((ageHours - T.hashEnd) / (T.expEnd - T.hashEnd), 0, 1), erAtGate: 0.075, resurfaced: false };
         }
-        // Long tail after explore
         const ltPool = Math.floor(exploreAudience * 0.85);
         return { stage: 'long_tail', audiencePool: ltPool, stageProgress: clamp((ageHours - T.expEnd) / 300, 0, 1), erAtGate: 0.072, resurfaced: false };
     }
@@ -355,7 +328,6 @@ const getStageState = (
         if (ageHours < T.viralEnd) {
             return { stage: 'viral_wave', audiencePool: viralAudience, stageProgress: clamp((ageHours - T.expEnd) / (T.viralEnd - T.expEnd), 0, 1), erAtGate: 0.091, resurfaced: false };
         }
-        // Long tail post-viral
         const ltPool = Math.floor(viralAudience * 0.70);
         return { stage: 'long_tail', audiencePool: ltPool, stageProgress: clamp((ageHours - T.viralEnd) / 400, 0, 1), erAtGate: 0.088, resurfaced: false };
     }
@@ -405,18 +377,19 @@ const getDailyFollowerNoise = (id: string, ageInDays: number): number => {
 // ── Followers calculator ──────────────────────────────────────────────────
 
 export const calculateFakeFollowers = (
-    id: string,
+    authorId: string, // 🚀 UPDATED PARAMETER: Cleanly mapped to author ID
     createdAt: string,
     postsCount: number,
     isFakeOn: boolean,
 ): number => {
-    if (!isFakeOn || !id || !createdAt) return 0;
+    // 🛑 If fake engine is off, immediately return 0. Supabase DB handles the rest.
+    if (!isFakeOn || !authorId || !createdAt) return 0;
 
     const now         = Date.now();
     const createdTime = new Date(createdAt).getTime();
     if (isNaN(createdTime) || createdTime > now) return 0;
 
-    const fp      = getFingerprint(id);
+    const fp      = getFingerprint(authorId);
     const profile = ARCHETYPE_PROFILES[fp.archetype];
     const ageMin  = Math.floor((now - createdTime) / 60_000);
     if (ageMin <= profile.delayMinutes) return 0;
@@ -425,8 +398,8 @@ export const calculateFakeFollowers = (
     const activeHrs = activeMin / 60;
     const ageDays   = ageMin / 1440;
 
-    const h  = getHash(id);
-    const h2 = gh(id, 'flw');
+    const h  = getHash(authorId);
+    const h2 = gh(authorId, 'flw');
 
     // Ghost account: no posts
     if (!postsCount || postsCount === 0) {
@@ -469,7 +442,7 @@ export const calculateFakeFollowers = (
     followers *= lerp(1, getSeasonalMultiplier(), 0.40);
 
     // Daily realistic noise (makes it NOT smooth)
-    const noise = getDailyFollowerNoise(id, ageDays);
+    const noise = getDailyFollowerNoise(authorId, ageDays);
     followers  *= (1 + noise * 0.15);
 
     // Micro unfollow waves
@@ -487,9 +460,6 @@ export const calculateFakeFollowers = (
 };
 
 // ── Engagement calculator ─────────────────────────────────────────────────
-// Returns views, likes, saves, comments AND shares + reach.
-// Platform-accurate hierarchy enforced: Comments < Saves < Likes << Views
-// Instagram algo weights:   Shares(5×) > Saves(3×) > Comments(2×) > Likes(1×)
 
 export interface EngagementMetrics {
     views:    number;
@@ -500,9 +470,6 @@ export interface EngagementMetrics {
     reach:    number;   // unique accounts (< views for reels due to rewatches)
 }
 
-// Per-destiny view profiles — calibrated for stage-based audiences
-// Views are now DERIVED from stage audiencePool, not fixed ranges.
-// These are multipliers on the audiencePool at current stage.
 interface DestinyProfile {
     audienceConversionRate: [number, number]; // what % of pool actually sees it
     likeRate:               [number, number]; // % of REACH who like
@@ -511,8 +478,6 @@ interface DestinyProfile {
     shareRate:              [number, number]; // % of REACH who share (viral trigger)
 }
 
-// Rates are of REACH (unique viewers), not raw views.
-// These match real Instagram analytics data.
 const DESTINY_PROFILES: Record<PostDestiny, DestinyProfile> = {
     flop: {
         audienceConversionRate: [0.35, 0.65],
@@ -537,7 +502,6 @@ const DESTINY_PROFILES: Record<PostDestiny, DestinyProfile> = {
     },
     viral: {
         audienceConversionRate: [0.60, 0.85],
-        // Viral posts have lower % because explore audience is cold traffic
         likeRate:    [0.028, 0.062],
         saveRate:    [0.022, 0.055],  // saves stay high (recipe saves)
         commentRate: [0.008, 0.024],
@@ -545,18 +509,21 @@ const DESTINY_PROFILES: Record<PostDestiny, DestinyProfile> = {
     },
 };
 
-// Sample a value in a range using a 0-999 integer hash
 const sampleRange = (range: [number, number], seed: number): number =>
     range[0] + ((seed % 1000) / 1000) * (range[1] - range[0]);
 
+
+// 🚀 UPDATED SIGNATURE: We explicitly split authorId and recipeId
 export const calculateFakeEngagement = (
-    id:        string,
+    authorId:  string, 
+    recipeId:  string,
     createdAt: string,
     isFakeOn:  boolean,
-    postId?:   string,
 ): EngagementMetrics => {
     const zero: EngagementMetrics = { views: 0, likes: 0, saves: 0, comments: 0, shares: 0, reach: 0 };
-    if (!isFakeOn || !id || !createdAt) return zero;
+    
+    // 🛑 If Fake Engine is off, kill math immediately and return 0. UI will fall back to DB.
+    if (!isFakeOn || !authorId || !recipeId || !createdAt) return zero;
 
     const now         = Date.now();
     const createdTime = new Date(createdAt).getTime();
@@ -566,10 +533,11 @@ export const calculateFakeEngagement = (
     const ageHours = ageMin / 60;
     if (ageMin <= 90) return zero;   // indexing delay
 
-    const fp = getFingerprint(id);
+    // 🚀 We extract the fingerprint based on AUTHOR to get consistent scaling laws
+    const fp = getFingerprint(authorId);
 
-    // ── Post-level hashes (all randomness from postId) ────────────────────
-    const seed  = postId ?? (id + createdAt);
+    // 🚀 We base the randomness/hashing entirely on the RECIPE so no two posts are identical
+    const seed = recipeId;
     const ph    = getHash(seed);
     const ph2   = gh(seed, 'lk');
     const ph3   = gh(seed, 'sv');
@@ -587,58 +555,43 @@ export const calculateFakeEngagement = (
 
     const dp = DESTINY_PROFILES[destiny];
 
-    // ── Estimate approx follower count for stage model ────────────────────
-    // We need a rough follower count to seed the audience pool.
     const profile    = ARCHETYPE_PROFILES[fp.archetype];
-    const h          = getHash(id);
+    const h          = getHash(authorId);
     const approxCap  = profile.minCap + (h % profile.rangeCap);
-    // Use ~50% saturation as a baseline (avoids circular dependency)
     const approxFollowers = Math.floor(approxCap * 0.50 * (0.8 + fp.authorityScore * 0.4));
 
-    // ── Get current distribution stage ───────────────────────────────────
     const stageState = getStageState(ageHours, destiny, ph, approxFollowers, fp);
 
     if (stageState.stage === 'indexing') return zero;
 
-    // ── Audience who actually saw the post at this stage ─────────────────
     const convRate = sampleRange(dp.audienceConversionRate, ph % 1000);
     let reach = Math.floor(stageState.audiencePool * convRate * stageState.stageProgress);
 
-    // Stage-specific growth curve (Gompertz within each stage)
     reach = Math.floor(reach * gompertz(stageState.stageProgress));
 
-    // Long tail: gradual decay of existing reach pool
     if (stageState.stage === 'long_tail') {
         const decayFactor = Math.max(0.10, 1 - stageState.stageProgress * 0.85);
         reach = Math.floor(reach * decayFactor);
     }
 
-    // ── Time & day modifiers ──────────────────────────────────────────────
     const todMult = lerp(1, getTimeOfDayMultiplier(fp), 0.42);
     const dowMult = lerp(1, getDayOfWeekMultiplier(fp),  0.28);
     const seaMult = lerp(1, getSeasonalMultiplier(),     0.35);
 
     reach = Math.floor(reach * todMult * dowMult * seaMult);
 
-    // Post-unique micro-noise (different per post so no two look the same)
     const microNoise = 1 + Math.sin(ageHours * (1.1 + (phNz % 5) * 0.4)) * 0.028;
     reach = Math.max(0, Math.floor(reach * microNoise * APP_BOOST));
 
-    // ── Views vs Reach ────────────────────────────────────────────────────
-    // Reels count rewatches — views > reach for video content.
     const views = Math.floor(reach * fp.rewatchRate);
 
     if (views === 0 && reach === 0) return zero;
 
-    // ── Engagement rates (all based on REACH, not views) ─────────────────
-    // Each metric uses a completely independent hash → never accidentally equal.
-    let likeRate    = sampleRange(dp.likeRate,    ph2 % 1000);
-    let saveRate    = sampleRange(dp.saveRate,     ph3 % 1000);
+    let likeRate    = sampleRange(dp.likeRate,     ph2 % 1000);
+    let saveRate    = sampleRange(dp.saveRate,      ph3 % 1000);
     let commentRate = sampleRange(dp.commentRate,  ph4 % 1000);
     let shareRate   = sampleRange(dp.shareRate,    ph5 % 1000);
 
-    // ── Stage-specific ER modifiers ───────────────────────────────────────
-    // Seed stage: core followers engage harder (they know the creator)
     if (stageState.stage === 'seed') {
         likeRate    *= 1.25;
         commentRate *= 1.40;
@@ -646,39 +599,41 @@ export const calculateFakeEngagement = (
         shareRate   *= 1.10;
     }
 
-    // Early surge (<25% through any stage): first wave engages more
     if (stageState.stageProgress < 0.25) {
         likeRate    *= 1.18;
         commentRate *= 1.30;
     }
 
-    // Viral explore-traffic dilution: cold audience doesn't engage as hard
     if (destiny === 'viral' && (stageState.stage === 'explore' || stageState.stage === 'viral_wave')) {
-        likeRate    *= 0.78;   // lower %
-        saveRate    *= 1.12;   // but saves stay healthy (recipe bookmarking)
+        likeRate    *= 0.78;   
+        saveRate    *= 1.12;   
         commentRate *= 0.72;
-        shareRate   *= 1.20;   // shares are what keep it spreading
+        shareRate   *= 1.20;   
     }
 
-    // Re-surfaced posts: older audience is more selective
     if (stageState.resurfaced) {
         likeRate    *= 0.85;
-        saveRate    *= 1.18;   // saves spike on re-discovery
+        saveRate    *= 1.18;   
         shareRate   *= 1.25;
         commentRate *= 0.90;
     }
 
-    // ── Enforce platform-accurate hierarchy ───────────────────────────────
-    // MUST always hold: Shares ≤ Comments ≤ Saves < Likes << Views
-    // This is what makes the numbers look like a real Instagram analytics page.
     commentRate = Math.min(commentRate, saveRate    * 0.65);
     shareRate   = Math.min(shareRate,   commentRate * 0.80);
     saveRate    = Math.min(saveRate,    likeRate    * 0.52);
 
-    // ── Final counts ──────────────────────────────────────────────────────
     const reachBase = reach > 0 ? reach : views;
 
-    const likes    = clamp(Math.floor(reachBase * likeRate),    0, reachBase);
+    // 🚀 STRICT SAFETY CHECK: Force likes to mathematically never hit or exceed views
+    let calculatedLikes = Math.floor(reachBase * likeRate);
+    
+    // Safety cap: Realistically likes should be between 2% and 15% of views. We enforce an absolute hard cap of 40%
+    const maxAllowedLikes = Math.floor(views * 0.40);
+    if (calculatedLikes >= views || calculatedLikes > maxAllowedLikes) {
+        calculatedLikes = Math.floor(views * (0.05 + (ph2 % 100) / 1000)); // Forces random 5% to 15% ratio
+    }
+
+    const likes    = clamp(calculatedLikes, 0, Math.max(0, views - 1)); // Failsafe clamp ensuring likes < views
     const saves    = clamp(Math.floor(reachBase * saveRate),    0, likes);
     const comments = clamp(Math.floor(reachBase * commentRate), 0, saves);
     const shares   = clamp(Math.floor(reachBase * shareRate),   0, comments);

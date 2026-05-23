@@ -38,6 +38,7 @@ interface RecipeRow {
   id: string;
   name: string;
   author_name: string;
+  author_id?: string; // 🔥 Added for unique engagement calculation
   type: string;
   likes_count: number; 
   views_count: number;
@@ -218,20 +219,31 @@ export default function ZestlyAdminPage() {
         const realLikes = r.likes_count || 0; 
         const realViews = r.views_count || 0; 
         
-        // 🔥 Using centralized engine
-        const engineData = calculateFakeEngagement(r.id, r.created_at, isFakeOn);
+        // 🔥 Using centralized engine with exact parameter mapping
+        const authorIdToPass = r.author_id || r.user_id || "unknown";
+        const engineData = calculateFakeEngagement(authorIdToPass, r.id, r.created_at, isFakeOn);
         
+        let displayLikes = realLikes + engineData.likes;
+        let displayViews = realViews + engineData.views;
+
+        // 🛑 STRICT FRONTEND CAP: Ensure likes NEVER equal or exceed views
+        const maxLikes = Math.floor(displayViews * 0.40);
+        if (displayLikes >= displayViews || displayLikes > maxLikes) {
+            displayLikes = Math.floor(displayViews * (0.05 + Math.random() * 0.10)); // Force a 5-15% ratio
+        }
+
         return {
           id: r.id,
           name: r.name,
           author_name: r.author_name || "Chef",
+          author_id: authorIdToPass,
           type: r.type || "Veg",
           real_likes: realLikes,
           real_views: realViews,
           engine_likes: engineData.likes,
           engine_views: engineData.views,
-          likes_count: realLikes + engineData.likes, 
-          views_count: realViews + engineData.views, 
+          likes_count: displayLikes, 
+          views_count: displayViews, 
           comments_count: r.comments_data ? r.comments_data.length : 0,
           calories: r.calories || 0,
           difficulty: r.difficulty || "Medium",
@@ -273,8 +285,8 @@ export default function ZestlyAdminPage() {
 
       const isFakeOn = settingsData ? settingsData.fake_engagement_enabled : true;
       if (settingsData) {
-          setFakeMode(isFakeOn);
-          setBotPings(settingsData.bot_ping_count || 0);
+        setFakeMode(isFakeOn);
+        setBotPings(settingsData.bot_ping_count || 0);
       }
 
       // Format Initial Users & Recipes
@@ -517,13 +529,24 @@ export default function ZestlyAdminPage() {
       }));
 
       setRecipes(recipes.map(r => {
-          const engineData = calculateFakeEngagement(r.id, r.created_at, newMode);
+          const authorIdToPass = r.author_id || "unknown";
+          const engineData = calculateFakeEngagement(authorIdToPass, r.id, r.created_at, newMode);
+          
+          let displayLikes = r.real_likes + engineData.likes;
+          let displayViews = r.real_views + engineData.views;
+
+          // 🛑 Ensure likes never exceed views even dynamically
+          const maxLikes = Math.floor(displayViews * 0.40);
+          if (displayLikes >= displayViews || displayLikes > maxLikes) {
+              displayLikes = Math.floor(displayViews * (0.05 + Math.random() * 0.10));
+          }
+
           return {
               ...r,
               engine_likes: engineData.likes,
               engine_views: engineData.views,
-              likes_count: r.real_likes + engineData.likes,
-              views_count: r.real_views + engineData.views
+              likes_count: displayLikes,
+              views_count: displayViews
           };
       }));
 

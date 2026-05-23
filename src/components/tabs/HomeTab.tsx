@@ -70,6 +70,17 @@ const formatNum = (n: number) => {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 };
 
+// 🚀 Fisher-Yates Shuffle Algorithm
+const shuffleArray = (array: any[]) => {
+  let currentIndex = array.length, randomIndex;
+  while (currentIndex !== 0) {
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex--;
+    [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+  }
+  return array;
+};
+
 // 🚀 REUSABLE VERIFIED BADGE COMPONENT
 const VerifiedBadge = ({ sizeClass = "w-5 h-5", noTooltip = false, containerClass = "" }: { sizeClass?: string, noTooltip?: boolean, containerClass?: string }) => (
     <div className={`relative flex items-center justify-center group shrink-0 cursor-pointer ${containerClass}`} title={noTooltip ? "" : "Official Verified Creator"}>
@@ -100,6 +111,7 @@ const VerifiedBadge = ({ sizeClass = "w-5 h-5", noTooltip = false, containerClas
 // ─── COMPONENT ────────────────────────────────────────────
 export default function HomeTab({ user }: HomeTabProps) {
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [feedPool, setFeedPool] = useState<any[]>([]); // 🚀 Global shuffled pool
   const [trendingChefs, setTrendingChefs] = useState<any[]>([]);
   const [myProfile, setMyProfile] = useState<any>(null);
   const [savedRecipeIds, setSavedRecipeIds] = useState<string[]>([]); 
@@ -124,7 +136,7 @@ export default function HomeTab({ user }: HomeTabProps) {
   const [replyingTo, setReplyingTo] = useState<{ commentId: string, author: string, isSubReply?: boolean } | null>(null);
 
   const [cookModePost, setCookModePost] = useState<FeedPost | null>(null);
-  const [focusedPost, setFocusedPost] = useState<FeedPost | null>(null); // Post Detail Modal State
+  const [focusedPost, setFocusedPost] = useState<FeedPost | null>(null);
   const [portions, setPortions] = useState(1);
   const [currentStep, setCurrentStep] = useState(-1);
 
@@ -172,8 +184,11 @@ export default function HomeTab({ user }: HomeTabProps) {
         let newViews = postToBoost.viewsCount + Math.floor(Math.random() * 8) + 2;
         let newLikes = Math.random() > 0.6 ? postToBoost.likesCount + 1 : postToBoost.likesCount;
         
-        // Ensure likes never exceed views
-        if (newLikes > newViews) newLikes = newViews;
+        // 🛑 STRICT FRONTEND CAP: Ensure likes NEVER equal or exceed views dynamically
+        const maxLikes = Math.floor(newViews * 0.40);
+        if (newLikes >= newViews || newLikes > maxLikes) {
+            newLikes = Math.floor(newViews * (0.05 + Math.random() * 0.10)); 
+        }
 
         newPosts[randomIdx] = {
           ...postToBoost,
@@ -233,7 +248,7 @@ export default function HomeTab({ user }: HomeTabProps) {
     const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
     
     if (!data) {
-      const rawName = user.user_metadata?.full_name || "Chef Zestly";
+      const rawName = user.user_metadata?.full_name || "Chef Nadeem";
       const baseUsername = user.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') : "zestly";
       const randomDigits = Math.floor(1000 + Math.random() * 9000);
       const finalUsername = user.user_metadata?.username || `${baseUsername}_${randomDigits}`;
@@ -286,16 +301,15 @@ export default function HomeTab({ user }: HomeTabProps) {
       let displayLikes = realLikes;
       let displayViews = realViews;
 
-      // 🛑 Engine Call
       if (isFakeOn) {
-          const engineData = calculateFakeEngagement(item.id, item.created_at, isFakeOn);
+          const authorIdToPass = item.author_id || item.user_id || `mock_author_${index}`;
+          const engineData = calculateFakeEngagement(authorIdToPass, item.id, item.created_at, isFakeOn);
           displayLikes = realLikes + engineData.likes;
           displayViews = realViews + engineData.views;
       }
       
-      // Safety Check: Display Likes can never be greater than Display Views
-      if (displayLikes > displayViews) {
-          displayLikes = displayViews;
+      if (displayLikes >= displayViews) {
+          displayLikes = Math.floor(displayViews * (0.05 + Math.random() * 0.10)); 
       }
 
       return {
@@ -326,16 +340,16 @@ export default function HomeTab({ user }: HomeTabProps) {
     });
   };
 
-  // 🚀 INITIAL FETCH
+  // 🚀 INITIAL FETCH (WITH RANDOM SHUFFLE)
   const fetchInitialFeedAndChefs = async () => {
     setIsLoading(true);
+    setPosts([]); 
     const { data: settingsData } = await supabase.from("app_settings").select("fake_engagement_enabled").eq("id", 1).single();
     const isFakeOn = settingsData ? settingsData.fake_engagement_enabled : false;
     setFakeMode(isFakeOn);
 
     const { data: profilesData } = await supabase.from("profiles").select("*").order("bonus_followers", { ascending: false }).limit(10);
     
-    // 🛑 Engine Call for Followers
     if (profilesData && profilesData.length > 0) {
       const formattedChefs = await Promise.all(profilesData.map(async p => {
           const { count: rc } = await supabase.from("recipes").select("*", { count: "exact", head: true }).eq("author_id", p.id);
@@ -348,40 +362,41 @@ export default function HomeTab({ user }: HomeTabProps) {
       }));
       setTrendingChefs(formattedChefs.sort((a, b) => b.followers - a.followers));
     } else {
-      setTrendingChefs([{ id: "mock1", full_name: "Chef Zestly", followers: 12500, is_verified: true }]);
+      setTrendingChefs([{ id: "mock1", full_name: "Chef Nadeem", followers: 12500, is_verified: true }]);
     }
 
-    const { data: recipesData } = await supabase
+    // 🔥 INSTAGRAM-LIKE SHUFFLE LOGIC
+    const { data: allRecipes } = await supabase
       .from("recipes")
       .select("*")
-      .order("created_at", { ascending: false })
-      .range(0, POSTS_PER_PAGE - 1);
+      .limit(100); // Fetch a large pool to shuffle
 
-    if (recipesData) {
-      const formatted = await formatRecipesData(recipesData, 0, isFakeOn);
+    if (allRecipes) {
+      const shuffledData = shuffleArray([...allRecipes]);
+      setFeedPool(shuffledData);
+      
+      const initialBatch = shuffledData.slice(0, POSTS_PER_PAGE);
+      const formatted = await formatRecipesData(initialBatch, 0, isFakeOn);
+      
       setPosts(formatted);
       setPage(1);
-      if (recipesData.length < POSTS_PER_PAGE) setHasMore(false);
+      if (shuffledData.length <= POSTS_PER_PAGE) setHasMore(false);
+      else setHasMore(true);
     }
     setIsLoading(false);
   };
 
-  // 🚀 LOAD MORE POSTS (INFINITE SCROLL)
+  // 🚀 LOAD MORE POSTS (FROM LOCAL POOL INSTEAD OF DB)
   const loadMorePosts = async () => {
     if (isFetchingMore || !hasMore || isLoading) return;
     setIsFetchingMore(true);
 
     const from = page * POSTS_PER_PAGE;
-    const to = from + POSTS_PER_PAGE - 1;
+    const to = from + POSTS_PER_PAGE;
+    const nextBatch = feedPool.slice(from, to);
 
-    const { data: recipesData } = await supabase
-      .from("recipes")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .range(from, to);
-
-    if (recipesData && recipesData.length > 0) {
-      const formatted = await formatRecipesData(recipesData, page * POSTS_PER_PAGE, fakeMode);
+    if (nextBatch.length > 0) {
+      const formatted = await formatRecipesData(nextBatch, from, fakeMode);
       
       setPosts(prev => {
         const existingIds = new Set(prev.map(p => p.id));
@@ -390,11 +405,17 @@ export default function HomeTab({ user }: HomeTabProps) {
       });
 
       setPage(p => p + 1);
-      if (recipesData.length < POSTS_PER_PAGE) setHasMore(false);
+      if (to >= feedPool.length) setHasMore(false);
     } else {
       setHasMore(false);
     }
     setIsFetchingMore(false);
+  };
+
+  const handleRefreshFeed = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    fetchInitialFeedAndChefs();
+    showToast("Feed refreshed! ✨");
   };
 
   const showAlert = (message: string) => setAlertModal({ isOpen: true, message });
@@ -515,9 +536,8 @@ export default function HomeTab({ user }: HomeTabProps) {
     const isNowLiked = !post.is_liked;
     const newRealLikesCount = isNowLiked ? post.realLikesCount + 1 : Math.max(0, post.realLikesCount - 1);
     
-    // Safety check - Likes can't be more than views
     let newDisplayLikes = isNowLiked ? post.likesCount + 1 : Math.max(0, post.likesCount - 1);
-    if (newDisplayLikes > post.viewsCount) newDisplayLikes = post.viewsCount;
+    if (newDisplayLikes > post.viewsCount) newDisplayLikes = post.viewsCount - 1;
 
     const updateMap = (pList: FeedPost[]) => pList.map(p => p.id === id ? { ...p, is_liked: isNowLiked, realLikesCount: newRealLikesCount, likesCount: newDisplayLikes } : p);
     
@@ -974,6 +994,14 @@ export default function HomeTab({ user }: HomeTabProps) {
                   {activeCuisine === "All" ? "Global Feed" : `${activeCuisine} Cuisine`}
                   {fakeMode && <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_#4ade80]"></span>}
               </h3>
+              
+              {/* 🚀 NEW REFRESH BUTTON FOR INSTAGRAM FEEL */}
+              {!searchQuery && activeCuisine === "All" && (
+                <button onClick={handleRefreshFeed} className="flex items-center gap-1.5 text-xs font-bold text-orange-500 bg-orange-500/10 px-3 py-1.5 rounded-full hover:bg-orange-500/20 transition-colors cursor-pointer outline-none active:scale-95">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  Refresh
+                </button>
+              )}
             </div>
             
             {isLoading ? (
