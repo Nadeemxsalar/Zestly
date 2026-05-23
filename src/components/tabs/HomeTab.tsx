@@ -42,8 +42,8 @@ interface FeedPost {
   authorIsVerified: boolean; 
   realLikesCount: number; 
   realViewsCount: number; 
-  likesCount: number;     
-  viewsCount: number;     
+  likesCount: number;      
+  viewsCount: number;      
   commentsCount: number;
   cuisine: string;
   commentsList: CommentData[];
@@ -318,7 +318,8 @@ export default function HomeTab({ user }: HomeTabProps) {
         type: item.type || "Veg",
         emoji: item.emoji || "🍲",
         gradient: item.gradient || "from-orange-500 to-red-600",
-        is_liked: item.is_liked || false,
+        // Hamesha false set karega taaki bina like kiye red heart na dikhe
+        is_liked: false, 
         imageUrl: item.image_url,
         authorName: item.author_name || "Chef Zestly", 
         authorId: item.author_id || item.user_id,
